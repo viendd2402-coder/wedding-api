@@ -17,6 +17,12 @@ export class UserEntity {
   @Column({ type: 'varchar', length: 255, nullable: true })
   password?: string | null;
 
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  googleId?: string | null;
+
+  @Column({ type: 'varchar', length: 255, nullable: true, unique: true })
+  facebookId?: string | null;
+
   @Column({ type: 'varchar', length: 100, nullable: true })
   fullName?: string | null;
 

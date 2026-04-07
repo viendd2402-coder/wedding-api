@@ -8,11 +8,13 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { compare, hash } from 'bcryptjs';
+import { OAuth2Client } from 'google-auth-library';
 import { randomUUID } from 'node:crypto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserEntity } from './entities/user.entity';
 import { UserRepository } from './repositories/user.repository';
@@ -28,6 +30,7 @@ import {
 @Injectable()
 export class AuthService implements OnModuleInit {
   private static readonly PASSWORD_SALT_ROUNDS = 10;
+  private readonly googleOAuthClient = new OAuth2Client();
 
   constructor(
     private readonly userRepository: UserRepository,
@@ -60,21 +63,48 @@ export class AuthService implements OnModuleInit {
       });
     }
 
-    const expiresIn = this.configService.get<number>('JWT_EXPIRES_IN', 86400);
-    const accessToken = await this.jwtService.signAsync(
-      {
-        sub: user.id,
-        email: user.email,
-      },
-      { expiresIn },
-    );
+    return this.buildLoginResponse(user);
+  }
 
-    return {
-      accessToken,
-      tokenType: 'Bearer',
-      expiresIn,
-      user: this.buildPublicProfile(user),
-    };
+  async socialLogin(dto: SocialLoginDto): Promise<LoginResponse> {
+    const socialProfile =
+      dto.provider === 'google'
+        ? await this.verifyGoogleToken(dto.token)
+        : await this.verifyFacebookToken(dto.token);
+
+    const normalizedEmail = socialProfile.email.trim().toLowerCase();
+    let user =
+      dto.provider === 'google'
+        ? await this.userRepository.findByGoogleId(socialProfile.providerId)
+        : await this.userRepository.findByFacebookId(socialProfile.providerId);
+
+    user ??= await this.userRepository.findByEmail(normalizedEmail);
+
+    if (!user) {
+      user = await this.userRepository.save(
+        this.userRepository.create({
+          email: normalizedEmail,
+          fullName: socialProfile.fullName ?? null,
+          password: null,
+          googleId: dto.provider === 'google' ? socialProfile.providerId : null,
+          facebookId:
+            dto.provider === 'facebook' ? socialProfile.providerId : null,
+        }),
+      );
+    } else {
+      if (!user.fullName && socialProfile.fullName) {
+        user.fullName = socialProfile.fullName;
+      }
+      if (dto.provider === 'google' && !user.googleId) {
+        user.googleId = socialProfile.providerId;
+      }
+      if (dto.provider === 'facebook' && !user.facebookId) {
+        user.facebookId = socialProfile.providerId;
+      }
+      user = await this.userRepository.save(user);
+    }
+
+    return this.buildLoginResponse(user);
   }
 
   async register(dto: RegisterDto): Promise<UserProfile> {
@@ -225,5 +255,117 @@ export class AuthService implements OnModuleInit {
 
   private hashPassword(password: string): Promise<string> {
     return hash(password, AuthService.PASSWORD_SALT_ROUNDS);
+  }
+
+  private async buildLoginResponse(user: UserEntity): Promise<LoginResponse> {
+    const expiresIn = this.configService.get<number>('JWT_EXPIRES_IN', 86400);
+    const accessToken = await this.jwtService.signAsync(
+      {
+        sub: user.id,
+        email: user.email,
+      },
+      { expiresIn },
+    );
+
+    return {
+      accessToken,
+      tokenType: 'Bearer',
+      expiresIn,
+      user: this.buildPublicProfile(user),
+    };
+  }
+
+  private async verifyGoogleToken(token: string): Promise<{
+    providerId: string;
+    email: string;
+    fullName: string | null;
+  }> {
+    const clientId = this.configService
+      .get<string>('GOOGLE_CLIENT_ID', '')
+      .trim();
+    if (!clientId) {
+      throw new BadRequestException({
+        message: 'Chưa cấu hình GOOGLE_CLIENT_ID',
+        messageCode: 'MSG_GOOGLE_CLIENT_ID_NOT_CONFIGURED',
+      });
+    }
+
+    const ticket = await this.googleOAuthClient.verifyIdToken({
+      idToken: token,
+      audience: clientId,
+    });
+    const payload = ticket.getPayload();
+
+    if (!payload?.sub || !payload.email || !payload.email_verified) {
+      throw new UnauthorizedException({
+        message: 'Google token không hợp lệ',
+        messageCode: 'MSG_GOOGLE_TOKEN_INVALID',
+      });
+    }
+
+    return {
+      providerId: payload.sub,
+      email: payload.email,
+      fullName: payload.name ?? null,
+    };
+  }
+
+  private async verifyFacebookToken(token: string): Promise<{
+    providerId: string;
+    email: string;
+    fullName: string | null;
+  }> {
+    const appId = this.configService.get<string>('FACEBOOK_APP_ID', '').trim();
+    if (!appId) {
+      throw new BadRequestException({
+        message: 'Chưa cấu hình FACEBOOK_APP_ID',
+        messageCode: 'MSG_FACEBOOK_APP_ID_NOT_CONFIGURED',
+      });
+    }
+
+    const response = await fetch(
+      `https://graph.facebook.com/me?fields=id,name,email&access_token=${encodeURIComponent(token)}`,
+    );
+
+    if (!response.ok) {
+      throw new UnauthorizedException({
+        message: 'Facebook token không hợp lệ',
+        messageCode: 'MSG_FACEBOOK_TOKEN_INVALID',
+      });
+    }
+
+    const data = (await response.json()) as {
+      id?: string;
+      name?: string;
+      email?: string;
+    };
+
+    if (!data.id || !data.email) {
+      throw new UnauthorizedException({
+        message: 'Không lấy được email từ Facebook',
+        messageCode: 'MSG_FACEBOOK_EMAIL_NOT_AVAILABLE',
+      });
+    }
+
+    const debugResponse = await fetch(
+      `https://graph.facebook.com/debug_token?input_token=${encodeURIComponent(token)}&access_token=${encodeURIComponent(`${appId}|`)}`,
+    );
+    if (debugResponse.ok) {
+      const debugData = (await debugResponse.json()) as {
+        data?: { app_id?: string; is_valid?: boolean };
+      };
+      if (!debugData.data?.is_valid || debugData.data.app_id !== appId) {
+        throw new UnauthorizedException({
+          message: 'Facebook token không hợp lệ',
+          messageCode: 'MSG_FACEBOOK_TOKEN_INVALID',
+        });
+      }
+    }
+
+    return {
+      providerId: data.id,
+      email: data.email,
+      fullName: data.name ?? null,
+    };
   }
 }

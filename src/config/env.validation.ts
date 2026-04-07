@@ -22,6 +22,8 @@ type AppEnv = {
   RESET_PASSWORD_URL: string;
   REDIS_HOST: string;
   REDIS_PORT: number;
+  GOOGLE_CLIENT_ID: string;
+  FACEBOOK_APP_ID: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -191,6 +193,14 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     );
   }
 
+  const googleClientIdInput = config.GOOGLE_CLIENT_ID;
+  const googleClientId =
+    typeof googleClientIdInput === 'string' ? googleClientIdInput.trim() : '';
+
+  const facebookAppIdInput = config.FACEBOOK_APP_ID;
+  const facebookAppId =
+    typeof facebookAppIdInput === 'string' ? facebookAppIdInput.trim() : '';
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -215,5 +225,7 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     RESET_PASSWORD_URL: resetPasswordUrl,
     REDIS_HOST: redisHost,
     REDIS_PORT: redisPort,
+    GOOGLE_CLIENT_ID: googleClientId,
+    FACEBOOK_APP_ID: facebookAppId,
   };
 }

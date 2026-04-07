@@ -14,6 +14,7 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
+import { SocialLoginDto } from './dto/social-login.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthService } from './auth.service';
 import { CurrentUserId } from './decorators/current-user-id.decorator';
@@ -34,6 +35,11 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto): Promise<LoginResponse> {
     return this.authService.login(dto);
+  }
+
+  @Post('social-login')
+  socialLogin(@Body() dto: SocialLoginDto): Promise<LoginResponse> {
+    return this.authService.socialLogin(dto);
   }
 
   @Post('register')

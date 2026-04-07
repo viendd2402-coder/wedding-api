@@ -26,6 +26,14 @@ export class UserRepository {
     return this.repository.findOne({ where: { email } });
   }
 
+  findByGoogleId(googleId: string): Promise<UserEntity | null> {
+    return this.repository.findOne({ where: { googleId } });
+  }
+
+  findByFacebookId(facebookId: string): Promise<UserEntity | null> {
+    return this.repository.findOne({ where: { facebookId } });
+  }
+
   findByResetToken(resetToken: string): Promise<UserEntity | null> {
     return this.repository.findOne({ where: { resetToken } });
   }
