@@ -14,6 +14,12 @@ type AppEnv = {
   AWS_S3_PUBLIC_BASE_URL: string;
   AWS_ACCESS_KEY_ID: string;
   AWS_SECRET_ACCESS_KEY: string;
+  MAIL_HOST: string;
+  MAIL_PORT: number;
+  MAIL_USER: string;
+  MAIL_PASS: string;
+  MAIL_FROM: string;
+  RESET_PASSWORD_URL: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -129,6 +135,42 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? awsSecretAccessKeyInput.trim()
       : '';
 
+  const mailHostInput = config.MAIL_HOST;
+  const mailHost =
+    typeof mailHostInput === 'string' ? mailHostInput.trim() : '';
+
+  const mailPortInput = config.MAIL_PORT;
+  const rawMailPort =
+    typeof mailPortInput === 'string' || typeof mailPortInput === 'number'
+      ? mailPortInput
+      : 2525;
+  const mailPort = Number(rawMailPort);
+  if (!Number.isInteger(mailPort) || mailPort <= 0 || mailPort > 65535) {
+    throw new Error(
+      `Invalid MAIL_PORT: "${String(rawMailPort)}". Expected an integer between 1 and 65535.`,
+    );
+  }
+
+  const mailUserInput = config.MAIL_USER;
+  const mailUser =
+    typeof mailUserInput === 'string' ? mailUserInput.trim() : '';
+
+  const mailPassInput = config.MAIL_PASS;
+  const mailPass =
+    typeof mailPassInput === 'string' ? mailPassInput.trim() : '';
+
+  const mailFromInput = config.MAIL_FROM;
+  const mailFrom =
+    typeof mailFromInput === 'string'
+      ? mailFromInput.trim()
+      : 'no-reply@wedding.local';
+
+  const resetPasswordUrlInput = config.RESET_PASSWORD_URL;
+  const resetPasswordUrl =
+    typeof resetPasswordUrlInput === 'string'
+      ? resetPasswordUrlInput.trim()
+      : 'http://localhost:3000/reset-password';
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -145,5 +187,11 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     AWS_S3_PUBLIC_BASE_URL: awsS3PublicBaseUrl,
     AWS_ACCESS_KEY_ID: awsAccessKeyId,
     AWS_SECRET_ACCESS_KEY: awsSecretAccessKey,
+    MAIL_HOST: mailHost,
+    MAIL_PORT: mailPort,
+    MAIL_USER: mailUser,
+    MAIL_PASS: mailPass,
+    MAIL_FROM: mailFrom,
+    RESET_PASSWORD_URL: resetPasswordUrl,
   };
 }

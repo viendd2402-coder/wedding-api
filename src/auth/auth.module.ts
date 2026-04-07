@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { StorageModule } from '../storage/storage.module';
+import { MailModule } from '../mail/mail.module';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { UserEntity } from './entities/user.entity';
@@ -12,6 +13,7 @@ import { UserRepository } from './repositories/user.repository';
 @Module({
   imports: [
     StorageModule,
+    MailModule,
     TypeOrmModule.forFeature([UserEntity]),
     JwtModule.registerAsync({
       inject: [ConfigService],

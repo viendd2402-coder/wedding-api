@@ -18,7 +18,10 @@ export class S3Service {
   private readonly publicBaseUrl: string;
 
   constructor(private readonly configService: ConfigService) {
-    this.region = this.configService.get<string>('AWS_REGION', 'ap-southeast-1');
+    this.region = this.configService.get<string>(
+      'AWS_REGION',
+      'ap-southeast-1',
+    );
     this.bucket = this.configService.get<string>('AWS_S3_BUCKET', '') ?? '';
     this.publicBaseUrl =
       this.configService.get<string>('AWS_S3_PUBLIC_BASE_URL', '') ?? '';
@@ -42,7 +45,10 @@ export class S3Service {
     });
   }
 
-  async uploadAvatar(userId: number, file: Express.Multer.File): Promise<string> {
+  async uploadAvatar(
+    userId: number,
+    file: Express.Multer.File,
+  ): Promise<string> {
     if (!this.bucket) {
       throw new BadRequestException({
         message: 'Chưa cấu hình lưu trữ ảnh (S3).',

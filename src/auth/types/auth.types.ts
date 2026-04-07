@@ -20,6 +20,8 @@ export type LoginResponse = {
 
 export type ForgotPasswordResponse = {
   message: string;
-  resetToken: string | null;
-  expiresAt: string | null;
+};
+
+export type ResetPasswordResponse = {
+  message: string;
 };

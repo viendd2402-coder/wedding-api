@@ -13,6 +13,7 @@ import { memoryStorage } from 'multer';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { AuthService } from './auth.service';
 import { CurrentUserId } from './decorators/current-user-id.decorator';
@@ -20,6 +21,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import {
   ForgotPasswordResponse,
   LoginResponse,
+  ResetPasswordResponse,
   UserProfile,
 } from './types/auth.types';
 
@@ -44,6 +46,11 @@ export class AuthController {
     @Body() dto: ForgotPasswordDto,
   ): Promise<ForgotPasswordResponse> {
     return this.authService.forgotPassword(dto);
+  }
+
+  @Post('reset-password')
+  resetPassword(@Body() dto: ResetPasswordDto): Promise<ResetPasswordResponse> {
+    return this.authService.resetPassword(dto);
   }
 
   @Get('profile')

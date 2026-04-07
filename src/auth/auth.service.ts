@@ -12,13 +12,16 @@ import { randomUUID } from 'node:crypto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { LoginDto } from './dto/login.dto';
 import { RegisterDto } from './dto/register.dto';
+import { ResetPasswordDto } from './dto/reset-password.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UserEntity } from './entities/user.entity';
 import { UserRepository } from './repositories/user.repository';
 import { S3Service } from '../storage/s3.service';
+import { MailService } from '../mail/mail.service';
 import {
   ForgotPasswordResponse,
   LoginResponse,
+  ResetPasswordResponse,
   UserProfile,
 } from './types/auth.types';
 
@@ -29,11 +32,14 @@ export class AuthService implements OnModuleInit {
   constructor(
     private readonly userRepository: UserRepository,
     private readonly jwtService: JwtService,
-    private readonly configService: ConfigService,
     private readonly s3Service: S3Service,
+    private readonly configService: ConfigService,
+    private readonly mailService: MailService,
   ) {}
 
-  async onModuleInit(): Promise<void> {}
+  // Kept to satisfy OnModuleInit; no-op for now
+
+  onModuleInit(): void {}
 
   async login(dto: LoginDto): Promise<LoginResponse> {
     const normalizedEmail = dto.email.trim().toLowerCase();
@@ -111,12 +117,53 @@ export class AuthService implements OnModuleInit {
         new Date(Date.now() + 15 * 60 * 1000),
       );
       user = updatedUser ?? user;
+
+      if (user.resetToken && user.resetTokenExpiresAt) {
+        await this.mailService.sendResetPasswordEmail(
+          user.email,
+          user.resetToken,
+          user.resetTokenExpiresAt,
+        );
+      }
     }
 
     return {
       message: 'Nếu email tồn tại, hệ thống đã gửi hướng dẫn đặt lại mật khẩu.',
-      resetToken: user?.resetToken ?? null,
-      expiresAt: user?.resetTokenExpiresAt?.toISOString() ?? null,
+    };
+  }
+
+  async resetPassword(dto: ResetPasswordDto): Promise<ResetPasswordResponse> {
+    if (dto.password !== dto.passwordConfirmation) {
+      throw new BadRequestException({
+        message: 'Mật khẩu xác nhận không khớp',
+        messageCode: 'MSG_PASSWORD_CONFIRMATION_DOES_NOT_MATCH',
+      });
+    }
+
+    const token = dto.token.trim();
+    const user = await this.userRepository.findByResetToken(token);
+
+    if (!user || !user.resetTokenExpiresAt) {
+      throw new BadRequestException({
+        message: 'Token đặt lại mật khẩu không hợp lệ',
+        messageCode: 'MSG_RESET_PASSWORD_TOKEN_INVALID',
+      });
+    }
+
+    if (user.resetTokenExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException({
+        message: 'Token đặt lại mật khẩu đã hết hạn',
+        messageCode: 'MSG_RESET_PASSWORD_TOKEN_EXPIRED',
+      });
+    }
+
+    await this.userRepository.updatePasswordAndClearResetToken(
+      user.id,
+      await this.hashPassword(dto.password),
+    );
+
+    return {
+      message: 'Đặt lại mật khẩu thành công.',
     };
   }
 

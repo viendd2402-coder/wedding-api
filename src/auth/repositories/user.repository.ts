@@ -26,6 +26,10 @@ export class UserRepository {
     return this.repository.findOne({ where: { email } });
   }
 
+  findByResetToken(resetToken: string): Promise<UserEntity | null> {
+    return this.repository.findOne({ where: { resetToken } });
+  }
+
   findByEmailAndPassword(
     email: string,
     password: string,
@@ -66,6 +70,21 @@ export class UserRepository {
       {
         resetToken,
         resetTokenExpiresAt: expiresAt,
+      },
+    );
+    return this.findById(userId);
+  }
+
+  async updatePasswordAndClearResetToken(
+    userId: number,
+    password: string,
+  ): Promise<UserEntity | null> {
+    await this.repository.update(
+      { id: userId },
+      {
+        password,
+        resetToken: null,
+        resetTokenExpiresAt: null,
       },
     );
     return this.findById(userId);
