@@ -1,13 +1,19 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
+import { Queue } from 'bullmq';
 import { createTransport, type Transporter } from 'nodemailer';
+import { MAIL_JOB_SEND_RESET_PASSWORD, MAIL_QUEUE_NAME } from './mail.queue';
 
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
   private readonly transporter: Transporter | null;
 
-  constructor(private readonly configService: ConfigService) {
+  constructor(
+    private readonly configService: ConfigService,
+    @InjectQueue(MAIL_QUEUE_NAME) private readonly mailQueue: Queue,
+  ) {
     const host = this.configService.get<string>('MAIL_HOST', '').trim();
     const port = this.configService.get<number>('MAIL_PORT', 2525);
     const user = this.configService.get<string>('MAIL_USER', '').trim();
@@ -33,6 +39,29 @@ export class MailService {
   }
 
   async sendResetPasswordEmail(
+    email: string,
+    resetToken: string,
+    expiresAt: Date,
+  ): Promise<void> {
+    await this.mailQueue.add(
+      MAIL_JOB_SEND_RESET_PASSWORD,
+      {
+        email,
+        resetToken,
+        expiresAtIso: expiresAt.toISOString(),
+      },
+      {
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+        removeOnComplete: true,
+      },
+    );
+  }
+
+  async sendResetPasswordEmailNow(
     email: string,
     resetToken: string,
     expiresAt: Date,

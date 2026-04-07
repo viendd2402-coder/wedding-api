@@ -18,35 +18,46 @@ services:
       timeout: 5s
       retries: 10
 
-  api:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: deps
-    container_name: ${API_CONTAINER_NAME:-wedding_api}
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #     target: deps
+  #   container_name: ${API_CONTAINER_NAME:-wedding_api}
+  #   restart: unless-stopped
+  #   depends_on:
+  #     postgres:
+  #       condition: service_healthy
+  #     redis:
+  #       condition: service_started
+  #   command: npm run start:dev
+  #   volumes:
+  #     - .:/app
+  #     - /app/node_modules
+  #   environment:
+  #     NODE_ENV: ${NODE_ENV}
+  #     PORT: ${API_INTERNAL_PORT:-3000}
+  #     DB_HOST: ${DB_HOST}
+  #     DB_PORT: 5432
+  #     DB_USERNAME: ${DB_USERNAME}
+  #     DB_PASSWORD: ${DB_PASSWORD}
+  #     DB_NAME: ${DB_NAME}
+  #     DB_SYNC: ${DB_SYNC}
+  #     JWT_SECRET: ${JWT_SECRET}
+  #     JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+  #     REDIS_HOST: redis
+  #     REDIS_PORT: 6379
+  #     CHOKIDAR_USEPOLLING: 'true'
+  #     CHOKIDAR_INTERVAL: '300'
+  #   ports:
+  #     - '${PORT}:${API_INTERNAL_PORT:-3000}'
+
+  redis:
+    image: redis:7-alpine
+    container_name: ${REDIS_CONTAINER_NAME:-wedding_redis}
     restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    command: npm run start:dev
-    volumes:
-      - .:/app
-      - /app/node_modules
-    environment:
-      NODE_ENV: ${NODE_ENV}
-      PORT: ${API_INTERNAL_PORT:-3000}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: 5432
-      DB_USERNAME: ${DB_USERNAME}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: ${DB_NAME}
-      DB_SYNC: ${DB_SYNC}
-      JWT_SECRET: ${JWT_SECRET}
-      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
-      CHOKIDAR_USEPOLLING: 'true'
-      CHOKIDAR_INTERVAL: '300'
     ports:
-      - '${PORT}:${API_INTERNAL_PORT:-3000}'
+      - '${REDIS_PORT}:6379'
 
 volumes:
   postgres_data:

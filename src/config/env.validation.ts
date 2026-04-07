@@ -20,6 +20,8 @@ type AppEnv = {
   MAIL_PASS: string;
   MAIL_FROM: string;
   RESET_PASSWORD_URL: string;
+  REDIS_HOST: string;
+  REDIS_PORT: number;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -171,6 +173,24 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? resetPasswordUrlInput.trim()
       : 'http://localhost:3000/reset-password';
 
+  const redisHostInput = config.REDIS_HOST;
+  const redisHost =
+    typeof redisHostInput === 'string' && redisHostInput.trim().length > 0
+      ? redisHostInput.trim()
+      : 'localhost';
+
+  const redisPortInput = config.REDIS_PORT;
+  const rawRedisPort =
+    typeof redisPortInput === 'string' || typeof redisPortInput === 'number'
+      ? redisPortInput
+      : 6379;
+  const redisPort = Number(rawRedisPort);
+  if (!Number.isInteger(redisPort) || redisPort <= 0 || redisPort > 65535) {
+    throw new Error(
+      `Invalid REDIS_PORT: "${String(rawRedisPort)}". Expected an integer between 1 and 65535.`,
+    );
+  }
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -193,5 +213,7 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     MAIL_PASS: mailPass,
     MAIL_FROM: mailFrom,
     RESET_PASSWORD_URL: resetPasswordUrl,
+    REDIS_HOST: redisHost,
+    REDIS_PORT: redisPort,
   };
 }
