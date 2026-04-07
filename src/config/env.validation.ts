@@ -24,6 +24,10 @@ type AppEnv = {
   REDIS_PORT: number;
   GOOGLE_CLIENT_ID: string;
   FACEBOOK_APP_ID: string;
+  FRONTEND_URL: string;
+  PAYOS_CLIENT_ID: string;
+  PAYOS_API_KEY: string;
+  PAYOS_CHECKSUM_KEY: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -201,6 +205,26 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
   const facebookAppId =
     typeof facebookAppIdInput === 'string' ? facebookAppIdInput.trim() : '';
 
+  const frontendUrlInput = config.FRONTEND_URL;
+  const frontendUrl =
+    typeof frontendUrlInput === 'string'
+      ? frontendUrlInput.trim()
+      : 'http://localhost:3000';
+
+  const payosClientIdInput = config.PAYOS_CLIENT_ID;
+  const payosClientId =
+    typeof payosClientIdInput === 'string' ? payosClientIdInput.trim() : '';
+
+  const payosApiKeyInput = config.PAYOS_API_KEY;
+  const payosApiKey =
+    typeof payosApiKeyInput === 'string' ? payosApiKeyInput.trim() : '';
+
+  const payosChecksumKeyInput = config.PAYOS_CHECKSUM_KEY;
+  const payosChecksumKey =
+    typeof payosChecksumKeyInput === 'string'
+      ? payosChecksumKeyInput.trim()
+      : '';
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -227,5 +251,9 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     REDIS_PORT: redisPort,
     GOOGLE_CLIENT_ID: googleClientId,
     FACEBOOK_APP_ID: facebookAppId,
+    FRONTEND_URL: frontendUrl,
+    PAYOS_CLIENT_ID: payosClientId,
+    PAYOS_API_KEY: payosApiKey,
+    PAYOS_CHECKSUM_KEY: payosChecksumKey,
   };
 }

@@ -28,6 +28,7 @@
     "@nestjs/jwt": "^11.0.2",
     "@nestjs/platform-express": "^11.0.1",
     "@nestjs/typeorm": "^11.0.1",
+    "@payos/node": "^2.0.5",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.73.0",
     "class-transformer": "^0.5.1",

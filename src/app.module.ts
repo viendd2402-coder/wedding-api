@@ -7,6 +7,7 @@ import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
 import { validateEnv } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { PaymentsModule } from './payments/payments.module';
 import { ReportModule } from './report/report.module';
 
 @Module({
@@ -40,6 +41,7 @@ import { ReportModule } from './report/report.module';
     }),
     AuthModule,
     HealthModule,
+    PaymentsModule,
     ReportModule,
   ],
   controllers: [AppController],
