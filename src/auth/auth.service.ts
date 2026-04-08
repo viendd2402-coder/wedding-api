@@ -72,13 +72,15 @@ export class AuthService implements OnModuleInit {
         ? await this.verifyGoogleToken(dto.token)
         : await this.verifyFacebookToken(dto.token);
 
-    const normalizedEmail = socialProfile.email.trim().toLowerCase();
+    const normalizedEmail = socialProfile.email?.trim().toLowerCase() ?? null;
     let user =
       dto.provider === 'google'
         ? await this.userRepository.findByGoogleId(socialProfile.providerId)
         : await this.userRepository.findByFacebookId(socialProfile.providerId);
 
-    user ??= await this.userRepository.findByEmail(normalizedEmail);
+    if (!user && normalizedEmail) {
+      user = await this.userRepository.findByEmail(normalizedEmail);
+    }
 
     if (!user) {
       user = await this.userRepository.save(
@@ -94,6 +96,9 @@ export class AuthService implements OnModuleInit {
     } else {
       if (!user.fullName && socialProfile.fullName) {
         user.fullName = socialProfile.fullName;
+      }
+      if (!user.email && normalizedEmail) {
+        user.email = normalizedEmail;
       }
       if (dto.provider === 'google' && !user.googleId) {
         user.googleId = socialProfile.providerId;
@@ -148,7 +153,7 @@ export class AuthService implements OnModuleInit {
       );
       user = updatedUser ?? user;
 
-      if (user.resetToken && user.resetTokenExpiresAt) {
+      if (user.email && user.resetToken && user.resetTokenExpiresAt) {
         await this.mailService.sendResetPasswordEmail(
           user.email,
           user.resetToken,
@@ -241,7 +246,7 @@ export class AuthService implements OnModuleInit {
   private buildPublicProfile(user: UserEntity): UserProfile {
     return {
       id: user.id,
-      email: user.email,
+      email: user.email ?? null,
       fullName: user.fullName ?? null,
       phone: user.phone ?? null,
       age: user.age ?? null,
@@ -262,7 +267,7 @@ export class AuthService implements OnModuleInit {
     const accessToken = await this.jwtService.signAsync(
       {
         sub: user.id,
-        email: user.email,
+        email: user.email ?? null,
       },
       { expiresIn },
     );
@@ -312,7 +317,7 @@ export class AuthService implements OnModuleInit {
 
   private async verifyFacebookToken(token: string): Promise<{
     providerId: string;
-    email: string;
+    email: string | null;
     fullName: string | null;
   }> {
     const appId = this.configService.get<string>('FACEBOOK_APP_ID', '').trim();
@@ -340,10 +345,10 @@ export class AuthService implements OnModuleInit {
       email?: string;
     };
 
-    if (!data.id || !data.email) {
+    if (!data.id) {
       throw new UnauthorizedException({
-        message: 'Không lấy được email từ Facebook',
-        messageCode: 'MSG_FACEBOOK_EMAIL_NOT_AVAILABLE',
+        message: 'Facebook token không hợp lệ',
+        messageCode: 'MSG_FACEBOOK_TOKEN_INVALID',
       });
     }
 
@@ -364,7 +369,7 @@ export class AuthService implements OnModuleInit {
 
     return {
       providerId: data.id,
-      email: data.email,
+      email: data.email ?? null,
       fullName: data.name ?? null,
     };
   }

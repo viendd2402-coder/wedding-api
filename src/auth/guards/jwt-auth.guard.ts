@@ -10,13 +10,13 @@ import { Request } from 'express';
 type AuthenticatedRequest = Request & {
   authUser?: {
     userId: number;
-    email: string;
+    email: string | null;
   };
 };
 
 type JwtPayload = {
   sub: number;
-  email: string;
+  email: string | null;
 };
 
 @Injectable()

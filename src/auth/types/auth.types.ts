@@ -1,6 +1,6 @@
 export type UserProfile = {
   id: number;
-  email: string;
+  email: string | null;
   fullName?: string | null;
   phone?: string | null;
   age?: number | null;
