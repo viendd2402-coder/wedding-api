@@ -1,21 +1,28 @@
 import { BadRequestException } from '@nestjs/common';
+import { INVITATION_TEMPLATES } from './invitation-templates.catalog';
 
 export type PaymentPlanDefinition = {
   amountVnd: number;
-  /** Lưu DB + gửi cổng thanh toán (VNPay orderInfo nên ngắn, ASCII). */
   orderLabel: string;
 };
 
-const PLANS: Record<string, PaymentPlanDefinition> = {
-  'brightly-basic': {
-    amountVnd: 149000,
-    orderLabel: 'Brightly Basic Template',
-  },
-  'slide-flex': {
-    amountVnd: 149000,
-    orderLabel: 'Slide Flex Template',
-  },
-};
+function buildPaidPlansFromCatalog(): Record<string, PaymentPlanDefinition> {
+  const out: Record<string, PaymentPlanDefinition> = {};
+  for (const t of INVITATION_TEMPLATES) {
+    if (t.isFree) {
+      continue;
+    }
+    if (!t.paymentPlan) {
+      throw new Error(
+        `Template trả phí "${t.templateSlug}" thiếu paymentPlan trong invitation-templates.catalog`,
+      );
+    }
+    out[t.templateSlug.toLowerCase()] = t.paymentPlan;
+  }
+  return out;
+}
+
+const PLANS: Record<string, PaymentPlanDefinition> = buildPaidPlansFromCatalog();
 
 export function getPaymentPlanBySlug(slug: string): PaymentPlanDefinition {
   const key = slug.trim().toLowerCase();

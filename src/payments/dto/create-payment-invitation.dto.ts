@@ -2,6 +2,7 @@ import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDateString,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsOptional,
@@ -10,6 +11,7 @@ import {
   Min,
   ValidateNested,
 } from 'class-validator';
+import { INVITATION_TEMPLATE_SLUGS } from '../invitation-templates.catalog';
 
 export class PaymentInvitationAlbumItemDto {
   @IsString()
@@ -31,6 +33,7 @@ export class PaymentInvitationAlbumItemDto {
 export class CreatePaymentInvitationDto {
   @IsNotEmpty()
   @IsString()
+  @IsIn([...INVITATION_TEMPLATE_SLUGS])
   @MaxLength(120)
   templateSlug!: string;
 

@@ -4,7 +4,9 @@ import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-de
 import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import { S3Service } from '../storage/s3.service';
+import { INVITATION_TEMPLATES } from './invitation-templates.catalog';
 import { PaymentsService } from './payments.service';
+import type { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -50,7 +52,17 @@ describe('PaymentsService', () => {
   });
 
   it('delegates createPaymentLink to active gateway', async () => {
-    const dto = { slug: 'wedding-invite-basic' };
+    const paid = INVITATION_TEMPLATES.find((t) => !t.isFree)!;
+    const dto = {
+      invitation: {
+        templateSlug: paid.templateSlug,
+        version: 1,
+        brideName: 'A',
+        groomName: 'B',
+        weddingDate: '2026-01-01',
+        venue: 'Venue',
+      },
+    } satisfies CreatePaymentLinkDto;
     const res = {
       paymentId: 1,
       checkoutUrl: 'https://pay.test',

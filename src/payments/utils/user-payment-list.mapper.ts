@@ -8,20 +8,7 @@ import type {
   UserPaymentListItemResponse,
   UserPaymentProductType,
 } from '../types/payment.types';
-
-const TEMPLATE_DISPLAY: Record<string, string> = {
-  'slide-flex': 'SLIDEFLEX',
-  'brightly-basic': 'BRIGHTLY BASIC',
-  'minimal-muse': 'MINIMAL MUSE',
-};
-
-function templateNameFromSlug(slug: string | null | undefined): string {
-  if (!slug?.trim()) {
-    return '';
-  }
-  const key = slug.trim().toLowerCase();
-  return TEMPLATE_DISPLAY[key] ?? key.split(/[-_]/).filter(Boolean).join(' ').toUpperCase();
-}
+import { invitationTemplateDisplayName } from '../invitation-templates.catalog';
 
 function parseVenueLines(venue: string | null | undefined): {
   city: string | null;
@@ -209,7 +196,7 @@ export function mapPaymentToUserListItem(
   const inv = buildInvitationSnapshot(payment, details);
   const slugForName =
     inv?.templateSlug?.trim() || payment.planSlug?.trim() || null;
-  const templateName = templateNameFromSlug(slugForName);
+  const templateName = invitationTemplateDisplayName(slugForName);
   const thumbKey = pickFirstAlbumStorageKey(inv?.album ?? null);
   const thumbnailUrl = resolvePublicObjectUrl(thumbKey);
 

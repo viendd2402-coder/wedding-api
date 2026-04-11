@@ -17,8 +17,13 @@ import {
   CreatePaymentLinkResponse,
   PaymentDetailResponse,
   PaymentListResponse,
+  PopularInvitationTemplatesResponse,
   PublicInvitationDetailsByCodeResponse,
 } from './types/payment.types';
+import {
+  FREE_INVITATION_TEMPLATE_SLUGS_LOWER,
+  invitationTemplateDisplayName,
+} from './invitation-templates.catalog';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
 
 function coerceInvitationWeddingDate(
@@ -104,6 +109,54 @@ export class PaymentsService {
       createdAt: payment.createdAt.toISOString(),
       updatedAt: payment.updatedAt.toISOString(),
       paidAt: payment.paidAt?.toISOString() ?? null,
+    };
+  }
+
+  /**
+   * Top template thiệp theo số lần xuất hiện trong `payment_invitation_details`
+   * (không có metric “lượt xem”; đây là proxy “được chọn / tạo” nhiều nhất).
+   * Hòa `usageCount`: template trả phí (mất phí) xếp trước template miễn phí.
+   */
+  async getTopInvitationTemplatesByUsage(
+    limitRaw?: string,
+  ): Promise<PopularInvitationTemplatesResponse> {
+    const parsed =
+      limitRaw != null && String(limitRaw).trim() !== ''
+        ? Number(limitRaw)
+        : 4;
+    const limit = Math.min(
+      Math.max(Number.isFinite(parsed) ? Math.floor(parsed) : 4, 1),
+      10,
+    );
+
+    const qb = this.invitationDetailsRepository
+      .createQueryBuilder('d')
+      .select('LOWER(TRIM(d.templateSlug))', 'templateSlug')
+      .addSelect('COUNT(*)', 'usageCount')
+      .where('d.templateSlug IS NOT NULL')
+      .andWhere("TRIM(d.templateSlug) <> ''")
+      .groupBy('LOWER(TRIM(d.templateSlug))')
+      .orderBy('COUNT(*)', 'DESC');
+
+    const freeSlugs = [...FREE_INVITATION_TEMPLATE_SLUGS_LOWER];
+    if (freeSlugs.length > 0) {
+      qb.addOrderBy(
+        'CASE WHEN LOWER(TRIM(d.templateSlug)) IN (:...freeSlugs) THEN 1 ELSE 0 END',
+        'ASC',
+      ).setParameter('freeSlugs', freeSlugs);
+    }
+
+    const rows = await qb
+      .addOrderBy('LOWER(TRIM(d.templateSlug))', 'ASC')
+      .limit(limit)
+      .getRawMany<{ templateSlug: string; usageCount: string }>();
+
+    return {
+      items: rows.map((r) => ({
+        templateSlug: r.templateSlug,
+        usageCount: Number(r.usageCount),
+        templateName: invitationTemplateDisplayName(r.templateSlug),
+      })),
     };
   }
 

@@ -71,3 +71,14 @@ export type PublicInvitationDetailsByCodeResponse = {
   createdAt: string;
   updatedAt: string;
 };
+
+/** Một template thiệp xếp hạng theo số bản ghi `payment_invitation_details` (cùng slug). */
+export type PopularInvitationTemplateItem = {
+  templateSlug: string;
+  templateName: string;
+  usageCount: number;
+};
+
+export type PopularInvitationTemplatesResponse = {
+  items: PopularInvitationTemplateItem[];
+};
