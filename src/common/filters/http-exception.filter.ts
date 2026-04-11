@@ -4,7 +4,9 @@ import {
   ExceptionFilter,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
+import { APIError, PayOSError } from '@payos/node';
 import { Request, Response } from 'express';
 
 type ExceptionResponseBody = {
@@ -12,42 +14,141 @@ type ExceptionResponseBody = {
   message: string;
   messageCode: string;
   errors?: string[];
+  details?: Record<string, unknown>;
   timestamp: string;
   path: string;
 };
 
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
 
-    const isHttpException = exception instanceof HttpException;
-    const status: HttpStatus = isHttpException
-      ? (exception.getStatus() as HttpStatus)
-      : HttpStatus.INTERNAL_SERVER_ERROR;
+    if (exception instanceof HttpException) {
+      const status = exception.getStatus() as HttpStatus;
+      const normalized = this.normalizeExceptionResponse(exception.getResponse());
+      const body = this.buildBody(request.url, status, normalized);
+      response.status(status).json(body);
+      return;
+    }
 
-    const exceptionResponse = isHttpException ? exception.getResponse() : null;
-    const normalized = this.normalizeExceptionResponse(exceptionResponse);
+    if (exception instanceof APIError) {
+      const status = this.resolveHttpStatusForPayOs(exception);
+      const normalized = this.normalizePayOsApiError(exception);
+      this.logger.warn(
+        `PayOS APIError ${String(exception.status)}: ${exception.message}`,
+      );
+      const body = this.buildBody(request.url, status, normalized);
+      response.status(status).json(body);
+      return;
+    }
 
-    const body: ExceptionResponseBody = {
+    if (exception instanceof PayOSError) {
+      const status = HttpStatus.BAD_REQUEST;
+      const normalized = {
+        message: exception.message || 'PayOS error',
+        messageCode: 'PAYOS_ERROR',
+      };
+      this.logger.warn(`PayOSError: ${exception.message}`);
+      const body = this.buildBody(request.url, status, normalized);
+      response.status(status).json(body);
+      return;
+    }
+
+    if (exception instanceof Error) {
+      const status = HttpStatus.INTERNAL_SERVER_ERROR;
+      const msg = exception.message?.trim();
+      this.logger.error(
+        msg || 'Unhandled error',
+        exception.stack ?? String(exception),
+      );
+      const body = this.buildBody(request.url, status, {
+        message: msg || 'Internal server error',
+        messageCode: 'INTERNAL_ERROR',
+      });
+      response.status(status).json(body);
+      return;
+    }
+
+    this.logger.error('Unknown exception', String(exception));
+    const body = this.buildBody(request.url, HttpStatus.INTERNAL_SERVER_ERROR, {
+      message: 'Internal server error',
+      messageCode: 'INTERNAL_SERVER_ERROR',
+    });
+    response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
+  }
+
+  private buildBody(
+    path: string,
+    status: HttpStatus,
+    normalized: {
+      message: string;
+      messageCode?: string;
+      errors?: string[];
+      details?: Record<string, unknown>;
+    },
+  ): ExceptionResponseBody {
+    return {
       success: false,
       message: normalized.message,
       messageCode:
         normalized.messageCode ?? this.getDefaultMessageCodeByStatus(status),
       errors: normalized.errors,
+      details: normalized.details,
       timestamp: new Date().toISOString(),
-      path: request.url,
+      path,
     };
+  }
 
-    response.status(status).json(body);
+  private resolveHttpStatusForPayOs(exception: APIError): HttpStatus {
+    const s = exception.status;
+    if (typeof s === 'number' && s >= 400 && s < 600) {
+      return s as HttpStatus;
+    }
+    return HttpStatus.BAD_GATEWAY;
+  }
+
+  private normalizePayOsApiError(exception: APIError): {
+    message: string;
+    messageCode: string;
+    errors?: string[];
+    details?: Record<string, unknown>;
+  } {
+    const errors: string[] = [];
+    if (exception.desc) {
+      errors.push(String(exception.desc));
+    }
+    const details: Record<string, unknown> = {
+      payosCode: exception.code ?? null,
+      payosDesc: exception.desc ?? null,
+    };
+    if (
+      typeof exception.error === 'object' &&
+      exception.error !== null &&
+      !Array.isArray(exception.error)
+    ) {
+      details.payosError = exception.error as Record<string, unknown>;
+    }
+
+    return {
+      message: exception.message || 'PayOS request failed',
+      messageCode: exception.code
+        ? `PAYOS_${String(exception.code)}`
+        : 'PAYOS_API_ERROR',
+      errors: errors.length > 0 ? errors : undefined,
+      details,
+    };
   }
 
   private normalizeExceptionResponse(exceptionResponse: unknown): {
     message: string;
     messageCode?: string;
     errors?: string[];
+    details?: Record<string, unknown>;
   } {
     if (typeof exceptionResponse === 'string') {
       return { message: exceptionResponse };
