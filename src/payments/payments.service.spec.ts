@@ -36,7 +36,7 @@ describe('PaymentsService', () => {
   });
 
   it('delegates createPaymentLink to active gateway', async () => {
-    const dto = { amount: 5000, description: 'Gift' };
+    const dto = { slug: 'wedding-invite-basic' };
     const res = {
       paymentId: 1,
       checkoutUrl: 'https://pay.test',

@@ -1,9 +1,14 @@
+import { randomBytes } from 'node:crypto';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { VnpayService } from '../../vnpay/vnpay.service';
 import { CreatePaymentLinkDto } from '../dto/create-payment-link.dto';
+import {
+  PaymentInvitationAlbumItem,
+  PaymentInvitationDetailsEntity,
+} from '../entities/payment-invitation-details.entity';
 import {
   PaymentEntity,
   PaymentProvider,
@@ -14,6 +19,7 @@ import {
   CreatePaymentLinkResponse,
   VnpayIpnResponseBody,
 } from '../types/payment.types';
+import { getPaymentPlanBySlug } from '../payment-plans';
 import { generatePaymentOrderCode } from '../utils/payment-order-code.util';
 
 @Injectable()
@@ -23,6 +29,8 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly paymentRepository: Repository<PaymentEntity>,
+    @InjectRepository(PaymentInvitationDetailsEntity)
+    private readonly invitationDetailsRepository: Repository<PaymentInvitationDetailsEntity>,
     private readonly configService: ConfigService,
     private readonly vnpayService: VnpayService,
   ) {}
@@ -32,6 +40,7 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
     dto: CreatePaymentLinkDto,
     clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
+    const plan = getPaymentPlanBySlug(dto.invitation?.templateSlug);
     const providerOrderCode = String(generatePaymentOrderCode());
     const publicBase = this.getPublicApiBaseOrThrow();
 
@@ -39,8 +48,8 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
     try {
       checkoutUrl = this.vnpayService.buildPaymentUrl({
         orderId: providerOrderCode,
-        amountVnd: dto.amount,
-        orderInfo: dto.description.trim(),
+        amountVnd: plan.amountVnd,
+        orderInfo: plan.orderLabel,
         returnUrl: `${publicBase}/api/payments/vnpay/return`,
         clientIp,
       });
@@ -55,15 +64,21 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
       });
     }
 
+    const invitationDraft = dto.invitation
+      ? this.buildInvitationDraftFromDto(dto)
+      : null;
+
     const payment = await this.paymentRepository.save(
       this.paymentRepository.create({
         userId,
-        amount: dto.amount,
+        amount: plan.amountVnd,
         currency: 'VND',
-        description: dto.description.trim(),
+        description: plan.orderLabel,
+        planSlug: dto.invitation.templateSlug.trim().toLowerCase(),
         provider: PaymentProvider.VNPAY,
         providerOrderCode,
         checkoutUrl,
+        invitationDraft,
       }),
     );
 
@@ -136,6 +151,7 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
       payment.paidAt = new Date();
       payment.rawWebhook = this.vnpayQueryToRecord(query);
       await this.paymentRepository.save(payment);
+      await this.persistVnpayInvitationDetailsAfterPaidSafe(payment.id);
       return { RspCode: '00', Message: 'Confirm Success' };
     }
 
@@ -203,6 +219,7 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
         payment.rawWebhook = this.vnpayQueryToRecord(query);
         await this.paymentRepository.save(payment);
       }
+      await this.persistVnpayInvitationDetailsAfterPaidSafe(payment.id);
       return {
         redirectUrl: `${base}/payment/success?paymentId=${payment.id}`,
       };
@@ -234,6 +251,145 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
       `VNPay return redirect error=failed paymentId=${payment.id} vnp_TxnRef=${txnRef} vnp_ResponseCode=${responseCode} vnp_TransactionStatus=${transactionStatus}`,
     );
     return { redirectUrl: `${base}/payment/error?reason=failed` };
+  }
+
+  private buildInvitationDraftFromDto(
+    dto: CreatePaymentLinkDto,
+  ): Record<string, unknown> {
+    const inv = dto.invitation!;
+    return {
+      templateSlug: inv.templateSlug ?? null,
+      version: inv.version ?? 1,
+      brideName: inv.brideName,
+      groomName: inv.groomName,
+      weddingDate: inv.weddingDate ?? null,
+      venue: inv.venue ?? null,
+      album: inv.album?.length
+        ? inv.album.map((a) => ({
+            storageKey: a.storageKey,
+            caption: a.caption ?? null,
+            sortOrder: a.sortOrder ?? null,
+          }))
+        : null,
+    };
+  }
+
+  private async persistVnpayInvitationDetailsAfterPaidSafe(
+    paymentId: number,
+  ): Promise<void> {
+    try {
+      await this.persistVnpayInvitationDetailsAfterPaid(paymentId);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      this.logger.error(
+        `VNPay lưu thiệp cưới thất bại paymentId=${paymentId}: ${msg}`,
+        e instanceof Error ? e.stack : undefined,
+      );
+    }
+  }
+
+  private async persistVnpayInvitationDetailsAfterPaid(
+    paymentId: number,
+  ): Promise<void> {
+    const existing = await this.invitationDetailsRepository.findOne({
+      where: { payment: { id: paymentId } },
+    });
+    if (existing) {
+      return;
+    }
+
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId },
+    });
+    if (!payment?.invitationDraft || typeof payment.invitationDraft !== 'object') {
+      return;
+    }
+
+    const d = payment.invitationDraft as Record<string, unknown>;
+    const brideName = typeof d.brideName === 'string' ? d.brideName : '';
+    const groomName = typeof d.groomName === 'string' ? d.groomName : '';
+    if (!brideName.trim() || !groomName.trim()) {
+      this.logger.warn(
+        `VNPay invitation draft thiếu tên cô dâu/chú rể paymentId=${paymentId}`,
+      );
+      return;
+    }
+
+    const code = randomBytes(16).toString('hex');
+
+    let weddingDate: Date | null = null;
+    if (typeof d.weddingDate === 'string' && d.weddingDate.trim()) {
+      const parsed = new Date(d.weddingDate);
+      weddingDate = Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    const version =
+      typeof d.version === 'number' &&
+      Number.isFinite(d.version) &&
+      d.version >= 1
+        ? Math.floor(d.version)
+        : 1;
+
+    let album: PaymentInvitationAlbumItem[] | null = null;
+    if (Array.isArray(d.album)) {
+      const items = d.album
+        .map((item): PaymentInvitationAlbumItem | null => {
+          if (!item || typeof item !== 'object') {
+            return null;
+          }
+          const o = item as Record<string, unknown>;
+          const storageKey =
+            typeof o.storageKey === 'string' ? o.storageKey : '';
+          if (!storageKey) {
+            return null;
+          }
+          return {
+            storageKey: storageKey.slice(0, 500),
+            caption:
+              typeof o.caption === 'string' ? o.caption.slice(0, 500) : null,
+            ...(typeof o.sortOrder === 'number' && Number.isFinite(o.sortOrder)
+              ? { sortOrder: Math.max(0, Math.floor(o.sortOrder)) }
+              : {}),
+          };
+        })
+        .filter((x): x is PaymentInvitationAlbumItem => x !== null);
+      album = items.length > 0 ? items : null;
+    }
+
+    const details = this.invitationDetailsRepository.create({
+      payment,
+      code,
+      templateSlug:
+        typeof d.templateSlug === 'string'
+          ? d.templateSlug.slice(0, 120)
+          : null,
+      version,
+      brideName: brideName.slice(0, 255),
+      groomName: groomName.slice(0, 255),
+      weddingDate,
+      venue: typeof d.venue === 'string' ? d.venue.slice(0, 500) : null,
+      album,
+    });
+
+    try {
+      await this.invitationDetailsRepository.save(details);
+    } catch (e) {
+      if (this.isPgUniqueViolation(e)) {
+        return;
+      }
+      throw e;
+    }
+
+    payment.invitationDraft = null;
+    await this.paymentRepository.save(payment);
+  }
+
+  private isPgUniqueViolation(err: unknown): boolean {
+    return (
+      err instanceof QueryFailedError &&
+      (err as QueryFailedError & { driverError?: { code?: string } })
+        .driverError?.code === '23505'
+    );
   }
 
   private getPublicApiBaseOrThrow(): string {

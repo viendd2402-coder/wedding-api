@@ -4,6 +4,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
 import { PayosModule } from '../payos/payos.module';
 import { VnpayModule } from '../vnpay/vnpay.module';
+import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
 import { PaymentEntity } from './entities/payment.entity';
 import { PayosPaymentGatewayService } from './gateways/payos-payment-gateway.service';
 import { VnpayPaymentGatewayService } from './gateways/vnpay-payment-gateway.service';
@@ -19,7 +20,7 @@ import type { IPaymentGateway } from './providers/payment-gateway.interface';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PaymentEntity]),
+    TypeOrmModule.forFeature([PaymentEntity, PaymentInvitationDetailsEntity]),
     PayosModule,
     VnpayModule,
     AuthModule,

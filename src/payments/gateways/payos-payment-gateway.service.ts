@@ -9,6 +9,7 @@ import { Repository } from 'typeorm';
 import { PayosWebhookDto } from '../../payos/dto/payos-webhook.dto';
 import { PayosService } from '../../payos/payos.service';
 import { CreatePaymentLinkDto } from '../dto/create-payment-link.dto';
+import { getPaymentPlanBySlug } from '../payment-plans';
 import {
   PaymentEntity,
   PaymentProvider,
@@ -32,6 +33,7 @@ export class PayosPaymentGatewayService implements IPaymentGateway {
     dto: CreatePaymentLinkDto,
     _clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
+    const plan = getPaymentPlanBySlug(dto.invitation.templateSlug);
     const frontendUrl = this.configService.get<string>(
       'FRONTEND_URL',
       'http://localhost:3000',
@@ -41,8 +43,8 @@ export class PayosPaymentGatewayService implements IPaymentGateway {
 
     const payosData = await this.payosService.createPaymentLink({
       orderCode,
-      amount: dto.amount,
-      description: dto.description,
+      amount: plan.amountVnd,
+      description: plan.orderLabel,
       returnUrl: `${frontendUrl}/payment/success`,
       cancelUrl: `${frontendUrl}/payment/cancel`,
     });
@@ -50,9 +52,10 @@ export class PayosPaymentGatewayService implements IPaymentGateway {
     const payment = await this.paymentRepository.save(
       this.paymentRepository.create({
         userId,
-        amount: dto.amount,
+        amount: plan.amountVnd,
         currency: 'VND',
-        description: dto.description.trim(),
+        description: plan.orderLabel,
+        planSlug: dto.invitation.templateSlug.trim().toLowerCase(),
         provider: PaymentProvider.PAYOS,
         providerOrderCode,
         checkoutUrl: payosData.checkoutUrl,

@@ -56,11 +56,17 @@ export class PaymentEntity {
   @Column({ type: 'varchar', length: 500, nullable: true })
   description?: string | null;
 
+  @Column({ type: 'varchar', length: 120, nullable: true })
+  planSlug?: string | null;
+
   @Column({ type: 'timestamp', nullable: true })
   paidAt?: Date | null;
 
   @Column({ type: 'jsonb', nullable: true })
   rawWebhook?: Record<string, unknown> | null;
+
+  @Column({ type: 'jsonb', nullable: true })
+  invitationDraft?: Record<string, unknown> | null;
 
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
   createdAt!: Date;

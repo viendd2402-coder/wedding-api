@@ -1,13 +1,13 @@
-import { IsInt, IsNotEmpty, IsString, MaxLength, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsNotEmpty,
+  ValidateNested,
+} from 'class-validator';
+import { CreatePaymentInvitationDto } from './create-payment-invitation.dto';
 
 export class CreatePaymentLinkDto {
-  @IsInt()
-  @Min(1000)
   @IsNotEmpty()
-  amount!: number;
-
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(255)
-  description!: string;
+  @ValidateNested()
+  @Type(() => CreatePaymentInvitationDto)
+  invitation!: CreatePaymentInvitationDto;
 }

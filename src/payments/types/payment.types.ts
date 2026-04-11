@@ -11,6 +11,7 @@ export type PaymentDetailResponse = {
   id: number;
   amount: number;
   currency: string;
+  planSlug: string | null;
   description: string | null;
   status: PaymentStatus;
   provider: string;
