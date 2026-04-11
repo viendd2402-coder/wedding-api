@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Injectable,
   Inject,
@@ -7,6 +8,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { S3Service } from '../storage/s3.service';
+import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
 import { PaymentEntity } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import type { IPaymentGateway } from './providers/payment-gateway.interface';
@@ -15,14 +17,49 @@ import {
   CreatePaymentLinkResponse,
   PaymentDetailResponse,
   PaymentListResponse,
+  PublicInvitationDetailsByCodeResponse,
 } from './types/payment.types';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
+
+function coerceInvitationWeddingDate(
+  value: Date | string | null | undefined,
+): Date | null {
+  if (value == null) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime()) ? null : value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = new Date(value.trim());
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+}
+
+function invitationWeddingDateIso(
+  value: Date | string | null | undefined,
+): string | null {
+  const date = coerceInvitationWeddingDate(value);
+  if (!date) {
+    return null;
+  }
+  if (date.getUTCHours() === 0 && date.getUTCMinutes() === 0) {
+    const y = date.getUTCFullYear();
+    const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+    const day = String(date.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+  return date.toISOString();
+}
 
 @Injectable()
 export class PaymentsService {
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly paymentRepository: Repository<PaymentEntity>,
+    @InjectRepository(PaymentInvitationDetailsEntity)
+    private readonly invitationDetailsRepository: Repository<PaymentInvitationDetailsEntity>,
     @Inject(ACTIVE_PAYMENT_GATEWAY)
     private readonly activePaymentGateway: IPaymentGateway,
     private readonly s3Service: S3Service,
@@ -67,6 +104,53 @@ export class PaymentsService {
       createdAt: payment.createdAt.toISOString(),
       updatedAt: payment.updatedAt.toISOString(),
       paidAt: payment.paidAt?.toISOString() ?? null,
+    };
+  }
+
+  async getPublicInvitationDetailsByCode(
+    rawCode: string,
+  ): Promise<PublicInvitationDetailsByCodeResponse> {
+    const code = rawCode?.trim();
+    if (!code) {
+      throw new BadRequestException({
+        message: 'Thiếu mã thiệp (code)',
+        messageCode: 'MSG_INVITE_CODE_REQUIRED',
+      });
+    }
+
+    const details = await this.invitationDetailsRepository.findOne({
+      where: { code },
+    });
+    if (!details) {
+      throw new NotFoundException({
+        message: 'Không tìm thấy thiệp với mã này',
+        messageCode: 'MSG_INVITE_NOT_FOUND',
+      });
+    }
+
+    const albumRaw = details.album ?? [];
+    const albumSorted = [...albumRaw].sort(
+      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
+    );
+
+    return {
+      code: details.code,
+      templateSlug: details.templateSlug ?? null,
+      version: details.version,
+      brideName: details.brideName,
+      groomName: details.groomName,
+      weddingDate: invitationWeddingDateIso(details.weddingDate),
+      venue: details.venue ?? null,
+      album: albumSorted.map((item) => ({
+        url: this.s3Service.resolvePublicObjectUrl(item.storageKey),
+        caption: item.caption ?? null,
+        sortOrder:
+          typeof item.sortOrder === 'number' && Number.isFinite(item.sortOrder)
+            ? item.sortOrder
+            : null,
+      })),
+      createdAt: details.createdAt.toISOString(),
+      updatedAt: details.updatedAt.toISOString(),
     };
   }
 

@@ -51,3 +51,23 @@ export type VnpayIpnResponseBody = {
   RspCode: string;
   Message: string;
 };
+
+/** Chi tiết thiệp công khai (theo `code`), dùng cho trang invite không cần đăng nhập. */
+export type PublicInvitationAlbumItemResponse = {
+  url: string | null;
+  caption: string | null;
+  sortOrder: number | null;
+};
+
+export type PublicInvitationDetailsByCodeResponse = {
+  code: string;
+  templateSlug: string | null;
+  version: number;
+  brideName: string;
+  groomName: string;
+  weddingDate: string | null;
+  venue: string | null;
+  album: PublicInvitationAlbumItemResponse[];
+  createdAt: string;
+  updatedAt: string;
+};

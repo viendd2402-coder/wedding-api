@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
+import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
 import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import { S3Service } from '../storage/s3.service';
@@ -24,6 +25,12 @@ describe('PaymentsService', () => {
             findAndCount: jest.fn(),
             save: jest.fn(),
             create: jest.fn(),
+          },
+        },
+        {
+          provide: getRepositoryToken(PaymentInvitationDetailsEntity),
+          useValue: {
+            findOne: jest.fn(),
           },
         },
         {

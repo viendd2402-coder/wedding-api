@@ -13,6 +13,7 @@ import { PayosLegacyPaymentsController } from './integrations/payos/payos-legacy
 import { PayosWebhookController } from './integrations/payos/payos-webhook.controller';
 import { VnpayCallbacksController } from './integrations/vnpay/vnpay-callbacks.controller';
 import { getActivePaymentProvider } from './payment-provider';
+import { PaymentInvitationPublicController } from './payment-invitation-public.controller';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
 import { getPaymentGatewayFromRegistry } from './providers/payment-gateway.registry';
@@ -28,6 +29,7 @@ import type { IPaymentGateway } from './providers/payment-gateway.interface';
     AuthModule,
   ],
   controllers: [
+    PaymentInvitationPublicController,
     PaymentsController,
     PayosLegacyPaymentsController,
     PayosWebhookController,
