@@ -19,7 +19,7 @@ export type InvitationTemplateDefinition = {
 export const INVITATION_TEMPLATES: readonly InvitationTemplateDefinition[] = [
   {
     templateSlug: 'brightly-basic',
-    templateName: 'BRIGHTLY BASIC',
+    templateName: 'Brightly Basic',
     isFree: false,
     paymentPlan: {
       amountVnd: 149000,
@@ -28,7 +28,7 @@ export const INVITATION_TEMPLATES: readonly InvitationTemplateDefinition[] = [
   },
   {
     templateSlug: 'slide-flex',
-    templateName: 'SLIDEFLEX',
+    templateName: 'Slide Flex',
     isFree: false,
     paymentPlan: {
       amountVnd: 149000,
@@ -37,7 +37,7 @@ export const INVITATION_TEMPLATES: readonly InvitationTemplateDefinition[] = [
   },
   {
     templateSlug: 'minimal-muse',
-    templateName: 'MINIMAL MUSE',
+    templateName: 'Minimal muse',
     isFree: true,
   },
 ] as const;

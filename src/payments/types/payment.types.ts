@@ -27,6 +27,14 @@ export type CreatePaymentLinkResponse = {
   status: PaymentStatus;
 };
 
+/** Sau khi tạo thiệp template miễn phí (không có checkout URL). */
+export type CreateFreeInvitationResponse = {
+  paymentId: number;
+  orderCode: string;
+  inviteCode: string;
+  status: PaymentStatus;
+};
+
 export type PaymentDetailResponse = {
   id: number;
   amount: number;

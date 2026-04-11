@@ -11,9 +11,11 @@ import {
 } from '@nestjs/common';
 import { CurrentUserId } from '../auth/decorators/current-user-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CreateFreeInvitationDto } from './dto/create-free-invitation.dto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import { PaymentsService } from './payments.service';
 import {
+  CreateFreeInvitationResponse,
   CreatePaymentLinkResponse,
   PaymentDetailResponse,
   PaymentListResponse,
@@ -31,6 +33,15 @@ export class PaymentsController {
     @Ip() clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
     return this.paymentsService.createPaymentLink(userId, dto, clientIp);
+  }
+
+  @Post('free-invitation')
+  @UseGuards(JwtAuthGuard)
+  createFreeInvitation(
+    @CurrentUserId() userId: number,
+    @Body() dto: CreateFreeInvitationDto,
+  ): Promise<CreateFreeInvitationResponse> {
+    return this.paymentsService.createFreeInvitation(userId, dto);
   }
 
   @Get()

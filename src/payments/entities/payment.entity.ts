@@ -11,6 +11,8 @@ import {
 export enum PaymentProvider {
   PAYOS = 'PAYOS',
   VNPAY = 'VNPAY',
+  /** Không qua cổng thanh toán — template miễn phí trong catalog. */
+  FREE = 'FREE',
 }
 
 export enum PaymentStatus {

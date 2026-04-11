@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ForbiddenException,
@@ -6,14 +7,23 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { QueryFailedError, Repository } from 'typeorm';
 import { S3Service } from '../storage/s3.service';
-import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
-import { PaymentEntity } from './entities/payment.entity';
+import {
+  PaymentInvitationAlbumItem,
+  PaymentInvitationDetailsEntity,
+} from './entities/payment-invitation-details.entity';
+import {
+  PaymentEntity,
+  PaymentProvider,
+  PaymentStatus,
+} from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import type { IPaymentGateway } from './providers/payment-gateway.interface';
+import { CreateFreeInvitationDto } from './dto/create-free-invitation.dto';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import {
+  CreateFreeInvitationResponse,
   CreatePaymentLinkResponse,
   PaymentDetailResponse,
   PaymentListResponse,
@@ -22,8 +32,10 @@ import {
 } from './types/payment.types';
 import {
   FREE_INVITATION_TEMPLATE_SLUGS_LOWER,
+  getInvitationTemplateBySlug,
   invitationTemplateDisplayName,
 } from './invitation-templates.catalog';
+import { generatePaymentOrderCode } from './utils/payment-order-code.util';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
 
 function coerceInvitationWeddingDate(
@@ -76,6 +88,116 @@ export class PaymentsService {
     clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
     return this.activePaymentGateway.createPaymentLink(userId, dto, clientIp);
+  }
+
+  /**
+   * Tạo thiệp template miễn phí: không gọi VNPay/PayOS, lưu payment PAID (0đ) + mã thiệp công khai.
+   */
+  async createFreeInvitation(
+    userId: number,
+    dto: CreateFreeInvitationDto,
+  ): Promise<CreateFreeInvitationResponse> {
+    const inv = dto.invitation;
+    const templateDef = getInvitationTemplateBySlug(inv.templateSlug);
+    if (!templateDef?.isFree) {
+      throw new BadRequestException({
+        message:
+          'Template này không miễn phí. Hãy dùng POST /payments/payment-link để thanh toán.',
+        messageCode: 'MSG_TEMPLATE_NOT_FREE',
+      });
+    }
+
+    const providerOrderCode = String(generatePaymentOrderCode());
+    const code = randomBytes(16).toString('hex');
+
+    let weddingDate: Date | null = null;
+    if (inv.weddingDate?.trim()) {
+      const parsed = new Date(inv.weddingDate.trim());
+      weddingDate = Number.isNaN(parsed.getTime()) ? null : parsed;
+    }
+
+    let album: PaymentInvitationAlbumItem[] | null = null;
+    if (inv.album?.length) {
+      const items = inv.album
+        .map((item): PaymentInvitationAlbumItem | null => {
+          const storageKey = item.storageKey?.trim() ?? '';
+          if (!storageKey) {
+            return null;
+          }
+          return {
+            storageKey: storageKey.slice(0, 500),
+            caption:
+              typeof item.caption === 'string'
+                ? item.caption.slice(0, 500)
+                : null,
+            ...(typeof item.sortOrder === 'number' &&
+            Number.isFinite(item.sortOrder)
+              ? { sortOrder: Math.max(0, Math.floor(item.sortOrder)) }
+              : {}),
+          };
+        })
+        .filter((x): x is PaymentInvitationAlbumItem => x !== null);
+      album = items.length > 0 ? items : null;
+    }
+
+    return this.paymentRepository.manager.transaction(
+      async (manager): Promise<CreateFreeInvitationResponse> => {
+        const payment = manager.create(PaymentEntity, {
+          userId,
+          amount: 0,
+          currency: 'VND',
+          description: `${templateDef.templateName} template`,
+          planSlug: inv.templateSlug.trim().toLowerCase(),
+          provider: PaymentProvider.FREE,
+          providerOrderCode,
+          checkoutUrl: null,
+          status: PaymentStatus.PAID,
+          paidAt: new Date(),
+          rawWebhook: { source: 'free_invitation' },
+          invitationDraft: null,
+        });
+        const savedPayment = await manager.save(PaymentEntity, payment);
+
+        const details = manager.create(PaymentInvitationDetailsEntity, {
+          payment: savedPayment,
+          code,
+          templateSlug: inv.templateSlug.trim().toLowerCase().slice(0, 120),
+          version: Math.max(1, Math.floor(inv.version)),
+          brideName: inv.brideName.trim().slice(0, 255),
+          groomName: inv.groomName.trim().slice(0, 255),
+          weddingDate,
+          venue: inv.venue.trim().slice(0, 500),
+          album,
+        });
+
+        try {
+          await manager.save(PaymentInvitationDetailsEntity, details);
+        } catch (e) {
+          if (this.isPgUniqueViolation(e)) {
+            throw new BadRequestException({
+              message: 'Trùng mã thiệp, vui lòng thử lại.',
+              messageCode: 'MSG_FREE_INVITE_CODE_COLLISION',
+            });
+          }
+          throw e;
+        }
+
+        return {
+          paymentId: savedPayment.id,
+          orderCode: providerOrderCode,
+          inviteCode: code,
+          status: PaymentStatus.PAID,
+        };
+      },
+    );
+  }
+
+  private isPgUniqueViolation(err: unknown): boolean {
+    return (
+      err instanceof QueryFailedError &&
+      (err as QueryFailedError & { driverError?: { code?: string } })
+        .driverError?.code === '23505'
+    );
   }
 
   async getPaymentById(
