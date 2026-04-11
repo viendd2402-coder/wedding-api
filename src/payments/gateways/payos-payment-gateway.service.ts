@@ -17,6 +17,7 @@ import {
 } from '../entities/payment.entity';
 import type { IPaymentGateway } from '../providers/payment-gateway.interface';
 import { CreatePaymentLinkResponse } from '../types/payment.types';
+import { computeCheckoutUrlExpireDate } from '../utils/checkout-url-expire.util';
 import { generatePaymentOrderCode } from '../utils/payment-order-code.util';
 
 @Injectable()
@@ -59,6 +60,7 @@ export class PayosPaymentGatewayService implements IPaymentGateway {
         provider: PaymentProvider.PAYOS,
         providerOrderCode,
         checkoutUrl: payosData.checkoutUrl,
+        checkoutUrlExpireDate: computeCheckoutUrlExpireDate(),
       }),
     );
 

@@ -151,6 +151,7 @@ export class PaymentsService {
           provider: PaymentProvider.FREE,
           providerOrderCode,
           checkoutUrl: null,
+          checkoutUrlExpireDate: null,
           status: PaymentStatus.PAID,
           paidAt: new Date(),
           rawWebhook: { source: 'free_invitation' },
@@ -228,6 +229,8 @@ export class PaymentsService {
       provider: payment.provider,
       orderCode: payment.providerOrderCode,
       checkoutUrl: payment.checkoutUrl ?? null,
+      checkoutUrlExpireDate:
+        payment.checkoutUrlExpireDate?.toISOString() ?? null,
       createdAt: payment.createdAt.toISOString(),
       updatedAt: payment.updatedAt.toISOString(),
       paidAt: payment.paidAt?.toISOString() ?? null,

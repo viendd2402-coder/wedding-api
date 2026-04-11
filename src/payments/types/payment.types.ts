@@ -12,12 +12,16 @@ export type UserPaymentListItemResponse = {
   thumbnailUrl: string | null;
   templateName: string;
   publicationStatus: InvitationPublicationStatus;
+  createdAt: string;
   updatedAt: string;
   eventTitle: string | null;
   eventDateIso: string | null;
   eventDateLabel: string | null;
   venueDetail: string | null;
   invitePath: string | null;
+  checkoutUrl: string | null;
+  checkoutUrlExpireDate: string | null;
+  templateSlug: string | null;
 };
 
 export type CreatePaymentLinkResponse = {
@@ -45,6 +49,7 @@ export type PaymentDetailResponse = {
   provider: string;
   orderCode: string;
   checkoutUrl: string | null;
+  checkoutUrlExpireDate: string | null;
   createdAt: string;
   updatedAt: string;
   paidAt: string | null;

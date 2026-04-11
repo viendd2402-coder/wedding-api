@@ -57,6 +57,10 @@ export class PaymentEntity {
   @Column({ type: 'varchar', length: 1000, nullable: true })
   checkoutUrl?: string | null;
 
+  /** Hết hiệu lực ước lượng của link thanh toán (VNPay/PayOS); FREE thường null. */
+  @Column({ type: 'timestamp', nullable: true })
+  checkoutUrlExpireDate?: Date | null;
+
   @Column({ type: 'varchar', length: 500, nullable: true })
   description?: string | null;
 

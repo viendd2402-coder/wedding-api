@@ -217,11 +217,19 @@ export function mapPaymentToUserListItem(
     thumbnailUrl,
     templateName,
     publicationStatus,
+    createdAt: payment.createdAt.toISOString(),
     updatedAt: listUpdatedAt.toISOString(),
     eventTitle: inv ? buildEventTitle(inv.groomName, inv.brideName) : null,
     eventDateIso: eventDateIso(weddingDate),
     eventDateLabel: formatEventDateLabel(weddingDate),
     venueDetail: inv?.venueRaw ?? null,
     invitePath: inv?.publicCode ? `/invite/${inv.publicCode}` : null,
+    checkoutUrl: payment.checkoutUrl?.trim() || null,
+    checkoutUrlExpireDate:
+      payment.checkoutUrlExpireDate instanceof Date &&
+      !Number.isNaN(payment.checkoutUrlExpireDate.getTime())
+        ? payment.checkoutUrlExpireDate.toISOString()
+        : null,
+    templateSlug: inv?.templateSlug?.trim() || null,
   };
 }

@@ -20,6 +20,7 @@ import {
   VnpayIpnResponseBody,
 } from '../types/payment.types';
 import { getPaymentPlanBySlug } from '../payment-plans';
+import { computeCheckoutUrlExpireDate } from '../utils/checkout-url-expire.util';
 import { generatePaymentOrderCode } from '../utils/payment-order-code.util';
 
 @Injectable()
@@ -78,6 +79,7 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
         provider: PaymentProvider.VNPAY,
         providerOrderCode,
         checkoutUrl,
+        checkoutUrlExpireDate: computeCheckoutUrlExpireDate(),
         invitationDraft,
       }),
     );
