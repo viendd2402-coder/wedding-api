@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { S3Service } from '../storage/s3.service';
 import { PaymentEntity } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import type { IPaymentGateway } from './providers/payment-gateway.interface';
@@ -15,6 +16,7 @@ import {
   PaymentDetailResponse,
   PaymentListResponse,
 } from './types/payment.types';
+import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
 
 @Injectable()
 export class PaymentsService {
@@ -23,6 +25,7 @@ export class PaymentsService {
     private readonly paymentRepository: Repository<PaymentEntity>,
     @Inject(ACTIVE_PAYMENT_GATEWAY)
     private readonly activePaymentGateway: IPaymentGateway,
+    private readonly s3Service: S3Service,
   ) {}
 
   createPaymentLink(
@@ -76,23 +79,15 @@ export class PaymentsService {
       where: { userId },
       order: { createdAt: 'DESC' },
       take: normalizedLimit,
+      relations: { invitationDetails: true },
     });
 
     return {
-      items: payments.map((payment) => ({
-        id: payment.id,
-        amount: payment.amount,
-        currency: payment.currency,
-        planSlug: payment.planSlug ?? null,
-        description: payment.description ?? null,
-        status: payment.status,
-        provider: payment.provider,
-        orderCode: payment.providerOrderCode,
-        checkoutUrl: payment.checkoutUrl ?? null,
-        createdAt: payment.createdAt.toISOString(),
-        updatedAt: payment.updatedAt.toISOString(),
-        paidAt: payment.paidAt?.toISOString() ?? null,
-      })),
+      items: payments.map((payment) =>
+        mapPaymentToUserListItem(payment, (key) =>
+          this.s3Service.resolvePublicObjectUrl(key),
+        ),
+      ),
       total,
     };
   }

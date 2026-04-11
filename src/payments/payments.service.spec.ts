@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
+import { S3Service } from '../storage/s3.service';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
@@ -28,6 +29,12 @@ describe('PaymentsService', () => {
         {
           provide: ACTIVE_PAYMENT_GATEWAY,
           useValue: activeGateway,
+        },
+        {
+          provide: S3Service,
+          useValue: {
+            resolvePublicObjectUrl: jest.fn().mockReturnValue(null),
+          },
         },
       ],
     }).compile();

@@ -1,5 +1,25 @@
 import { PaymentStatus } from '../entities/payment.entity';
 
+export type UserPaymentProductType = 'free' | 'paid';
+
+export type InvitationPublicationStatus = 'published' | 'draft';
+
+/** Dữ liệu tối thiểu cho danh sách thiệp / payment trên dashboard. */
+export type UserPaymentListItemResponse = {
+  id: number;
+  paymentStatus: PaymentStatus;
+  paymentType: UserPaymentProductType;
+  thumbnailUrl: string | null;
+  templateName: string;
+  publicationStatus: InvitationPublicationStatus;
+  updatedAt: string;
+  eventTitle: string | null;
+  eventDateIso: string | null;
+  eventDateLabel: string | null;
+  venueDetail: string | null;
+  invitePath: string | null;
+};
+
 export type CreatePaymentLinkResponse = {
   paymentId: number;
   checkoutUrl: string;
@@ -23,7 +43,7 @@ export type PaymentDetailResponse = {
 };
 
 export type PaymentListResponse = {
-  items: PaymentDetailResponse[];
+  items: UserPaymentListItemResponse[];
   total: number;
 };
 

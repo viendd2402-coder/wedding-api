@@ -30,11 +30,10 @@ export class PaymentsController {
     @Body() dto: CreatePaymentLinkDto,
     @Ip() clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
-    console.log('createPaymentLink', userId, dto, clientIp);
     return this.paymentsService.createPaymentLink(userId, dto, clientIp);
   }
 
-  @Get('list')
+  @Get()
   @UseGuards(JwtAuthGuard)
   listPayments(
     @CurrentUserId() userId: number,
