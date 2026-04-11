@@ -28,6 +28,11 @@ type AppEnv = {
   PAYOS_CLIENT_ID: string;
   PAYOS_API_KEY: string;
   PAYOS_CHECKSUM_KEY: string;
+  PAYMENT_PROVIDER: string;
+  PUBLIC_API_BASE_URL: string;
+  VNPAY_TMN_CODE: string;
+  VNPAY_HASH_SECRET: string;
+  VNPAY_PAYMENT_URL: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -225,6 +230,36 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? payosChecksumKeyInput.trim()
       : '';
 
+  const paymentProviderInput = config.PAYMENT_PROVIDER;
+  const paymentProvider =
+    typeof paymentProviderInput === 'string'
+      ? paymentProviderInput.trim().toLowerCase()
+      : 'payos';
+  const normalizedPaymentProvider =
+    paymentProvider === 'vnpay' ? 'vnpay' : 'payos';
+
+  const publicApiBaseUrlInput = config.PUBLIC_API_BASE_URL;
+  const publicApiBaseUrl =
+    typeof publicApiBaseUrlInput === 'string'
+      ? publicApiBaseUrlInput.trim()
+      : '';
+
+  const vnpayTmnCodeInput = config.VNPAY_TMN_CODE;
+  const vnpayTmnCode =
+    typeof vnpayTmnCodeInput === 'string' ? vnpayTmnCodeInput.trim() : '';
+
+  const vnpayHashSecretInput = config.VNPAY_HASH_SECRET;
+  const vnpayHashSecret =
+    typeof vnpayHashSecretInput === 'string'
+      ? vnpayHashSecretInput.trim()
+      : '';
+
+  const vnpayPaymentUrlInput = config.VNPAY_PAYMENT_URL;
+  const vnpayPaymentUrl =
+    typeof vnpayPaymentUrlInput === 'string' && vnpayPaymentUrlInput.trim()
+      ? vnpayPaymentUrlInput.trim()
+      : 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -255,5 +290,10 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     PAYOS_CLIENT_ID: payosClientId,
     PAYOS_API_KEY: payosApiKey,
     PAYOS_CHECKSUM_KEY: payosChecksumKey,
+    PAYMENT_PROVIDER: normalizedPaymentProvider,
+    PUBLIC_API_BASE_URL: publicApiBaseUrl,
+    VNPAY_TMN_CODE: vnpayTmnCode,
+    VNPAY_HASH_SECRET: vnpayHashSecret,
+    VNPAY_PAYMENT_URL: vnpayPaymentUrl,
   };
 }

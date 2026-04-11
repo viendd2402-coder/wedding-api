@@ -31,6 +31,12 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus() as HttpStatus;
       const normalized = this.normalizeExceptionResponse(exception.getResponse());
+      const logLine = `${request.method} ${request.url} ${status} ${normalized.message}${normalized.messageCode ? ` [${normalized.messageCode}]` : ''}`;
+      if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
+        this.logger.error(logLine);
+      } else {
+        this.logger.warn(logLine);
+      }
       const body = this.buildBody(request.url, status, normalized);
       response.status(status).json(body);
       return;

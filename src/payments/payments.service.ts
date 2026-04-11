@@ -1,16 +1,15 @@
 import {
-  BadRequestException,
   ForbiddenException,
   Injectable,
+  Inject,
   NotFoundException,
 } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PayosService } from '../payos/payos.service';
+import { PaymentEntity } from './entities/payment.entity';
+import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
+import type { IPaymentGateway } from './providers/payment-gateway.interface';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
-import { PayosWebhookDto } from './dto/payos-webhook.dto';
-import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import {
   CreatePaymentLinkResponse,
   PaymentDetailResponse,
@@ -22,88 +21,16 @@ export class PaymentsService {
   constructor(
     @InjectRepository(PaymentEntity)
     private readonly paymentRepository: Repository<PaymentEntity>,
-    private readonly configService: ConfigService,
-    private readonly payosService: PayosService,
+    @Inject(ACTIVE_PAYMENT_GATEWAY)
+    private readonly activePaymentGateway: IPaymentGateway,
   ) {}
 
-  async createPaymentLink(
+  createPaymentLink(
     userId: number,
     dto: CreatePaymentLinkDto,
+    clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
-    const frontendUrl = this.configService.get<string>(
-      'FRONTEND_URL',
-      'http://localhost:3000',
-    );
-    const orderCode = this.generateOrderCode();
-
-    const payosData = await this.payosService.createPaymentLink({
-      orderCode,
-      amount: dto.amount,
-      description: dto.description,
-      returnUrl: `${frontendUrl}/payment/success`,
-      cancelUrl: `${frontendUrl}/payment/cancel`,
-    });
-
-    const payment = await this.paymentRepository.save(
-      this.paymentRepository.create({
-        userId,
-        amount: dto.amount,
-        currency: 'VND',
-        description: dto.description.trim(),
-        providerOrderCode: String(orderCode),
-        checkoutUrl: payosData.checkoutUrl,
-      }),
-    );
-
-    return {
-      paymentId: payment.id,
-      checkoutUrl: payosData.checkoutUrl,
-      orderCode: payment.providerOrderCode,
-      status: payment.status,
-    };
-  }
-
-  async processWebhook(dto: PayosWebhookDto): Promise<{ received: true }> {
-    const verifiedData = await this.payosService.verifyWebhook(dto);
-    const orderCodeRaw = verifiedData.orderCode;
-    const orderCode =
-      typeof orderCodeRaw === 'number' || typeof orderCodeRaw === 'string'
-        ? String(orderCodeRaw)
-        : '';
-    if (!orderCode) {
-      throw new BadRequestException({
-        message: 'Webhook thiếu orderCode',
-        messageCode: 'MSG_PAYOS_WEBHOOK_INVALID',
-      });
-    }
-
-    const payment = await this.paymentRepository.findOne({
-      where: { providerOrderCode: orderCode },
-    });
-
-    if (!payment) {
-      throw new NotFoundException({
-        message: 'Không tìm thấy payment theo orderCode',
-        messageCode: 'MSG_PAYMENT_NOT_FOUND',
-      });
-    }
-
-    if (payment.status === PaymentStatus.PAID) {
-      return { received: true };
-    }
-
-    const statusRaw = verifiedData.status;
-    const nextStatus = this.mapPayosStatus(
-      typeof statusRaw === 'string' ? statusRaw.toUpperCase() : '',
-    );
-    payment.status = nextStatus;
-    payment.rawWebhook = verifiedData;
-    if (nextStatus === PaymentStatus.PAID) {
-      payment.paidAt = new Date();
-    }
-    await this.paymentRepository.save(payment);
-
-    return { received: true };
+    return this.activePaymentGateway.createPaymentLink(userId, dto, clientIp);
   }
 
   async getPaymentById(
@@ -166,28 +93,5 @@ export class PaymentsService {
       })),
       total,
     };
-  }
-
-  private generateOrderCode(): number {
-    const timestamp = Date.now();
-    const randomSuffix = Math.floor(Math.random() * 1000);
-    return Number(`${timestamp}${randomSuffix}`.slice(-15));
-  }
-
-  private mapPayosStatus(status: string): PaymentStatus {
-    switch (status) {
-      case 'PAID':
-      case 'SUCCESS':
-        return PaymentStatus.PAID;
-      case 'CANCELLED':
-      case 'CANCELED':
-        return PaymentStatus.CANCELED;
-      case 'EXPIRED':
-        return PaymentStatus.EXPIRED;
-      case 'FAILED':
-        return PaymentStatus.FAILED;
-      default:
-        return PaymentStatus.PENDING;
-    }
   }
 }

@@ -8,6 +8,7 @@ import {
 
 export enum PaymentProvider {
   PAYOS = 'PAYOS',
+  VNPAY = 'VNPAY',
 }
 
 export enum PaymentStatus {
@@ -49,10 +50,10 @@ export class PaymentEntity {
   @Column({ type: 'bigint', unique: true })
   providerOrderCode!: string;
 
-  @Column({ type: 'varchar', length: 500, nullable: true })
+  @Column({ type: 'varchar', length: 1000, nullable: true })
   checkoutUrl?: string | null;
 
-  @Column({ type: 'varchar', length: 255, nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   description?: string | null;
 
   @Column({ type: 'timestamp', nullable: true })

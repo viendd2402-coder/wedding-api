@@ -1,46 +1,33 @@
-import { BadRequestException } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConfigService } from '@nestjs/config';
-import { PayosService } from '../payos/payos.service';
 import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
+import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import { PaymentsService } from './payments.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
-  let paymentRepository: {
-    findOne: jest.Mock;
-    save: jest.Mock;
-    create: jest.Mock;
-  };
-  let payosService: {
-    verifyWebhook: jest.Mock;
+  const activeGateway = {
+    createPaymentLink: jest.fn(),
   };
 
   beforeEach(async () => {
-    paymentRepository = {
-      findOne: jest.fn(),
-      save: jest.fn(),
-      create: jest.fn((data: Partial<PaymentEntity>) => data as PaymentEntity),
-    };
-    payosService = {
-      verifyWebhook: jest.fn(),
-    };
+    activeGateway.createPaymentLink.mockReset();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
         {
           provide: getRepositoryToken(PaymentEntity),
-          useValue: paymentRepository,
+          useValue: {
+            findOne: jest.fn(),
+            findAndCount: jest.fn(),
+            save: jest.fn(),
+            create: jest.fn(),
+          },
         },
         {
-          provide: ConfigService,
-          useValue: { get: jest.fn() },
-        },
-        {
-          provide: PayosService,
-          useValue: payosService,
+          provide: ACTIVE_PAYMENT_GATEWAY,
+          useValue: activeGateway,
         },
       ],
     }).compile();
@@ -48,28 +35,23 @@ describe('PaymentsService', () => {
     service = module.get<PaymentsService>(PaymentsService);
   });
 
-  it('throws when webhook data has no orderCode', async () => {
-    payosService.verifyWebhook.mockResolvedValue({ status: 'PAID' });
+  it('delegates createPaymentLink to active gateway', async () => {
+    const dto = { amount: 5000, description: 'Gift' };
+    const res = {
+      paymentId: 1,
+      checkoutUrl: 'https://pay.test',
+      orderCode: '1',
+      status: PaymentStatus.PENDING,
+    };
+    activeGateway.createPaymentLink.mockResolvedValue(res);
 
-    await expect(
-      service.processWebhook({ data: {}, signature: 'sig' }),
-    ).rejects.toBeInstanceOf(BadRequestException);
-  });
+    const out = await service.createPaymentLink(9, dto, '127.0.0.1');
 
-  it('is idempotent when payment already PAID', async () => {
-    payosService.verifyWebhook.mockResolvedValue({
-      orderCode: '123',
-      status: 'PAID',
-    });
-    paymentRepository.findOne.mockResolvedValue({
-      id: 1,
-      providerOrderCode: '123',
-      status: PaymentStatus.PAID,
-    });
-
-    const result = await service.processWebhook({ data: {}, signature: 'sig' });
-
-    expect(result).toEqual({ received: true });
-    expect(paymentRepository.save).not.toHaveBeenCalled();
+    expect(out).toEqual(res);
+    expect(activeGateway.createPaymentLink).toHaveBeenCalledWith(
+      9,
+      dto,
+      '127.0.0.1',
+    );
   });
 });

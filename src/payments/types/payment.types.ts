@@ -25,3 +25,8 @@ export type PaymentListResponse = {
   items: PaymentDetailResponse[];
   total: number;
 };
+
+export type VnpayIpnResponseBody = {
+  RspCode: string;
+  Message: string;
+};

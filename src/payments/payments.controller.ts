@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  Ip,
   Param,
   ParseIntPipe,
   Post,
@@ -11,7 +12,6 @@ import {
 import { CurrentUserId } from '../auth/decorators/current-user-id.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
-import { PayosWebhookDto } from './dto/payos-webhook.dto';
 import { PaymentsService } from './payments.service';
 import {
   CreatePaymentLinkResponse,
@@ -19,7 +19,7 @@ import {
   PaymentListResponse,
 } from './types/payment.types';
 
-@Controller('payos')
+@Controller('payments')
 export class PaymentsController {
   constructor(private readonly paymentsService: PaymentsService) {}
 
@@ -28,16 +28,13 @@ export class PaymentsController {
   createPaymentLink(
     @CurrentUserId() userId: number,
     @Body() dto: CreatePaymentLinkDto,
+    @Ip() clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
-    return this.paymentsService.createPaymentLink(userId, dto);
+    console.log('createPaymentLink', userId, dto, clientIp);
+    return this.paymentsService.createPaymentLink(userId, dto, clientIp);
   }
 
-  @Post('webhook')
-  webhook(@Body() dto: PayosWebhookDto): Promise<{ received: true }> {
-    return this.paymentsService.processWebhook(dto);
-  }
-
-  @Get('payments')
+  @Get('list')
   @UseGuards(JwtAuthGuard)
   listPayments(
     @CurrentUserId() userId: number,
@@ -47,7 +44,7 @@ export class PaymentsController {
     return this.paymentsService.listPaymentsByUser(userId, parsedLimit);
   }
 
-  @Get('payments/:id')
+  @Get(':id')
   @UseGuards(JwtAuthGuard)
   getPayment(
     @CurrentUserId() userId: number,
