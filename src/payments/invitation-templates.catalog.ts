@@ -36,6 +36,15 @@ export const INVITATION_TEMPLATES: readonly InvitationTemplateDefinition[] = [
     },
   },
   {
+    templateSlug: 'gentle-drift',
+    templateName: 'Gentle Drift',
+    isFree: false,
+    paymentPlan: {
+      amountVnd: 149000,
+      orderLabel: 'Gentle Drift Template',
+    },
+  },
+  {
     templateSlug: 'minimal-muse',
     templateName: 'Minimal muse',
     isFree: true,

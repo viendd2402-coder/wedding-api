@@ -9,6 +9,8 @@ import {
 import { APIError, PayOSError } from '@payos/node';
 import { Request, Response } from 'express';
 
+const LOG_PAYLOAD_MAX_CHARS = 12_000;
+
 type ExceptionResponseBody = {
   success: false;
   message: string;
@@ -27,16 +29,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
     const request = ctx.getRequest<Request>();
+    const reqCtx = this.buildRequestLogContext(request);
 
     if (exception instanceof HttpException) {
       const status = exception.getStatus() as HttpStatus;
-      const normalized = this.normalizeExceptionResponse(exception.getResponse());
-      const logLine = `${request.method} ${request.url} ${status} ${normalized.message}${normalized.messageCode ? ` [${normalized.messageCode}]` : ''}`;
-      if (status >= HttpStatus.INTERNAL_SERVER_ERROR) {
-        this.logger.error(logLine);
-      } else {
-        this.logger.warn(logLine);
-      }
+      const rawResponse = exception.getResponse();
+      const normalized = this.normalizeExceptionResponse(rawResponse);
+      const detailPayload = {
+        kind: 'HttpException',
+        ...reqCtx,
+        status,
+        response: rawResponse,
+        normalized,
+        exceptionName: exception.name,
+      };
+      const stack = exception.stack;
+      const httpTitle =
+        status >= HttpStatus.INTERNAL_SERVER_ERROR
+          ? 'HTTP exception (5xx)'
+          : 'HTTP exception (4xx)';
+      this.logServerDetail(httpTitle, detailPayload, stack);
       const body = this.buildBody(request.url, status, normalized);
       response.status(status).json(body);
       return;
@@ -45,8 +57,20 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof APIError) {
       const status = this.resolveHttpStatusForPayOs(exception);
       const normalized = this.normalizePayOsApiError(exception);
-      this.logger.warn(
-        `PayOS APIError ${String(exception.status)}: ${exception.message}`,
+      this.logServerDetail(
+        'PayOS APIError',
+        {
+          kind: 'PayOS.APIError',
+          ...reqCtx,
+          status,
+          httpStatus: exception.status,
+          code: exception.code,
+          desc: exception.desc,
+          message: exception.message,
+          error: exception.error,
+          normalized,
+        },
+        exception.stack,
       );
       const body = this.buildBody(request.url, status, normalized);
       response.status(status).json(body);
@@ -59,7 +83,17 @@ export class HttpExceptionFilter implements ExceptionFilter {
         message: exception.message || 'PayOS error',
         messageCode: 'PAYOS_ERROR',
       };
-      this.logger.warn(`PayOSError: ${exception.message}`);
+      this.logServerDetail(
+        'PayOSError',
+        {
+          kind: 'PayOS.PayOSError',
+          ...reqCtx,
+          status,
+          message: exception.message,
+          normalized,
+        },
+        exception.stack,
+      );
       const body = this.buildBody(request.url, status, normalized);
       response.status(status).json(body);
       return;
@@ -68,8 +102,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     if (exception instanceof Error) {
       const status = HttpStatus.INTERNAL_SERVER_ERROR;
       const msg = exception.message?.trim();
-      this.logger.error(
-        msg || 'Unhandled error',
+      this.logServerDetail(
+        'Unhandled Error (non-HTTP)',
+        {
+          kind: 'Error',
+          ...reqCtx,
+          name: exception.name,
+          message: msg || '(empty message)',
+          cause: this.serializeCause(exception.cause),
+        },
         exception.stack ?? String(exception),
       );
       const body = this.buildBody(request.url, status, {
@@ -80,12 +121,132 @@ export class HttpExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    this.logger.error('Unknown exception', String(exception));
+    this.logServerDetail(
+      'Unknown thrown value',
+      {
+        kind: typeof exception,
+        ...reqCtx,
+        value: this.describeUnknownException(exception),
+      },
+      undefined,
+    );
     const body = this.buildBody(request.url, HttpStatus.INTERNAL_SERVER_ERROR, {
       message: 'Internal server error',
       messageCode: 'INTERNAL_SERVER_ERROR',
     });
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json(body);
+  }
+
+  private buildRequestLogContext(request: Request): Record<string, unknown> {
+    const headers = request.headers ?? {};
+    return {
+      method: request.method,
+      path: request.url,
+      ip: request.ip,
+      userAgent: typeof headers['user-agent'] === 'string' ? headers['user-agent'] : undefined,
+      correlationId:
+        (typeof headers['x-request-id'] === 'string' && headers['x-request-id']) ||
+        (typeof headers['x-correlation-id'] === 'string' && headers['x-correlation-id']) ||
+        undefined,
+    };
+  }
+
+  private logServerDetail(
+    title: string,
+    payload: Record<string, unknown>,
+    stack?: string,
+  ): void {
+    const serialized = this.serializeForLog(payload);
+    const base = `${title} | ${serialized}`;
+    this.logger.error(base, stack);
+  }
+
+  private serializeCause(cause: unknown): unknown {
+    if (cause === undefined || cause === null) {
+      return undefined;
+    }
+    if (cause instanceof Error) {
+      return {
+        name: cause.name,
+        message: cause.message,
+        stack: cause.stack,
+        cause: this.serializeCause(cause.cause),
+      };
+    }
+    return this.serializeForLog(cause);
+  }
+
+  private describeUnknownException(exception: unknown): unknown {
+    if (exception === null || exception === undefined) {
+      return String(exception);
+    }
+    if (typeof exception === 'object') {
+      const ctor = (exception as object).constructor?.name;
+      return {
+        constructorName: ctor,
+        stringTag: Object.prototype.toString.call(exception),
+        keys:
+          typeof Object.keys === 'function' ? Object.keys(exception as object) : [],
+        serialized: this.serializeForLog(exception),
+      };
+    }
+    return String(exception);
+  }
+
+  private serializeForLog(value: unknown, maxChars = LOG_PAYLOAD_MAX_CHARS): string {
+    const seen = new WeakSet<object>();
+    const inner = (v: unknown, depth: number): unknown => {
+      if (depth > 6) {
+        return '[MaxDepth]';
+      }
+      if (v === null || v === undefined) {
+        return v;
+      }
+      if (typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean') {
+        return v;
+      }
+      if (typeof v === 'bigint') {
+        return v.toString();
+      }
+      if (v instanceof Error) {
+        return {
+          name: v.name,
+          message: v.message,
+          stack: v.stack,
+        };
+      }
+      if (typeof v === 'function') {
+        return `[Function ${v.name || 'anonymous'}]`;
+      }
+      if (typeof v !== 'object') {
+        return String(v);
+      }
+      if (seen.has(v as object)) {
+        return '[Circular]';
+      }
+      seen.add(v as object);
+      if (Array.isArray(v)) {
+        return v.map((item) => inner(item, depth + 1));
+      }
+      const out: Record<string, unknown> = {};
+      for (const key of Object.keys(v as object)) {
+        try {
+          out[key] = inner((v as Record<string, unknown>)[key], depth + 1);
+        } catch {
+          out[key] = '[Unserializable]';
+        }
+      }
+      return out;
+    };
+    try {
+      const json = JSON.stringify(inner(value, 0));
+      if (json.length <= maxChars) {
+        return json;
+      }
+      return `${json.slice(0, maxChars)}…[truncated ${json.length - maxChars} chars]`;
+    } catch {
+      return '[serializeForLog failed]';
+    }
   }
 
   private buildBody(
