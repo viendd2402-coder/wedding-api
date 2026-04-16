@@ -35,9 +35,9 @@ import {
   getInvitationTemplateBySlug,
   invitationTemplateDisplayName,
 } from './invitation-templates.catalog';
-import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { generatePaymentOrderCode } from './utils/payment-order-code.util';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
+import { PostPaymentQueueService } from './queues/post-payment-queue.service';
 
 function coerceInvitationWeddingDate(
   value: Date | string | null | undefined,
@@ -81,7 +81,7 @@ export class PaymentsService {
     @Inject(ACTIVE_PAYMENT_GATEWAY)
     private readonly activePaymentGateway: IPaymentGateway,
     private readonly s3Service: S3Service,
-    private readonly googleSheetsService: GoogleSheetsService,
+    private readonly postPaymentQueueService: PostPaymentQueueService,
   ) {}
 
   createPaymentLink(
@@ -207,7 +207,9 @@ export class PaymentsService {
         },
       );
 
-    this.googleSheetsService.scheduleGuestBookSpreadsheet(savedDetails);
+    await this.postPaymentQueueService.enqueueProvisionInvitationResources(
+      savedDetails.id,
+    );
 
     return response;
   }

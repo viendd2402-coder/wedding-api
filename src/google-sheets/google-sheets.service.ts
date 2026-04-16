@@ -27,6 +27,8 @@ import type {
 @Injectable()
 export class GoogleSheetsService {
   private readonly logger = new Logger(GoogleSheetsService.name);
+  private static readonly SPREADSHEET_URL_PREFIX =
+    'https://docs.google.com/spreadsheets/d/';
 
   constructor(
     private readonly configService: ConfigService,
@@ -48,6 +50,62 @@ export class GoogleSheetsService {
         err instanceof Error ? err.stack : undefined,
       );
     });
+  }
+
+  async ensureGuestBookSpreadsheetByInvitationDetailsId(
+    invitationDetailsId: number,
+  ): Promise<{ spreadsheetId: string; spreadsheetUrl: string } | null> {
+    const row = await this.invitationDetailsRepository.findOne({
+      where: { id: invitationDetailsId },
+    });
+    if (!row) {
+      return null;
+    }
+
+    const existingSheetId = row.guestBookSpreadsheetId?.trim();
+    if (existingSheetId) {
+      return {
+        spreadsheetId: existingSheetId,
+        spreadsheetUrl: this.buildSpreadsheetUrl(existingSheetId),
+      };
+    }
+
+    const cfg = this.resolveAppsScriptConfig();
+    if (!cfg) {
+      this.logger.warn(
+        'Bỏ qua tạo Google Sheet: thiếu GOOGLE_SHEETS_APPS_SCRIPT_URL hoặc GOOGLE_SHEETS_APPS_SCRIPT_SECRET',
+      );
+      return null;
+    }
+
+    const title = this.buildSpreadsheetTitle(row.brideName, row.groomName);
+    const { spreadsheetId, spreadsheetUrl } = await this.postAppsScriptCreateSheet(
+      title,
+      cfg,
+    );
+
+    const updateResult = await this.invitationDetailsRepository.update(
+      { id: row.id, guestBookSpreadsheetId: IsNull() },
+      { guestBookSpreadsheetId: spreadsheetId },
+    );
+
+    if (!updateResult.affected) {
+      const latest = await this.invitationDetailsRepository.findOne({
+        where: { id: row.id },
+      });
+      const latestSheetId = latest?.guestBookSpreadsheetId?.trim();
+      if (latestSheetId) {
+        return {
+          spreadsheetId: latestSheetId,
+          spreadsheetUrl: this.buildSpreadsheetUrl(latestSheetId),
+        };
+      }
+      this.logger.warn(
+        `Đã tạo Sheet spreadsheetId=${spreadsheetId} nhưng không gắn được DB (invitationDetailsId=${row.id}).`,
+      );
+    }
+
+    return { spreadsheetId, spreadsheetUrl };
   }
 
   private async ensureGuestBookSpreadsheet(
@@ -86,6 +144,10 @@ export class GoogleSheetsService {
   private buildSpreadsheetTitle(brideName: string, groomName: string): string {
     const raw = `Wedding — ${groomName.trim()} & ${brideName.trim()}`;
     return raw.length > 100 ? `${raw.slice(0, 97)}...` : raw;
+  }
+
+  private buildSpreadsheetUrl(spreadsheetId: string): string {
+    return `${GoogleSheetsService.SPREADSHEET_URL_PREFIX}${encodeURIComponent(spreadsheetId)}/edit`;
   }
 
   private resolveAppsScriptConfig(): { url: string; secret: string } | null {

@@ -5,9 +5,9 @@ import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import { S3Service } from '../storage/s3.service';
 import { INVITATION_TEMPLATES } from './invitation-templates.catalog';
-import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { PaymentsService } from './payments.service';
 import type { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
+import { PostPaymentQueueService } from './queues/post-payment-queue.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -47,8 +47,8 @@ describe('PaymentsService', () => {
           },
         },
         {
-          provide: GoogleSheetsService,
-          useValue: { scheduleGuestBookSpreadsheet: jest.fn() },
+          provide: PostPaymentQueueService,
+          useValue: { enqueueProvisionInvitationResources: jest.fn() },
         },
       ],
     }).compile();

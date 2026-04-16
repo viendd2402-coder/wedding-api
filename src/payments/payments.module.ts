@@ -1,8 +1,11 @@
 import { Module } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { UserEntity } from '../auth/entities/user.entity';
 import { GoogleSheetsModule } from '../google-sheets/google-sheets.module';
+import { MailModule } from '../mail/mail.module';
 import { PayosModule } from '../payos/payos.module';
 import { StorageModule } from '../storage/storage.module';
 import { VnpayModule } from '../vnpay/vnpay.module';
@@ -20,12 +23,23 @@ import { PaymentsService } from './payments.service';
 import { getPaymentGatewayFromRegistry } from './providers/payment-gateway.registry';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import type { IPaymentGateway } from './providers/payment-gateway.interface';
+import { PostPaymentProcessor } from './queues/post-payment.processor';
+import { PostPaymentQueueService } from './queues/post-payment-queue.service';
+import { POST_PAYMENT_QUEUE_NAME } from './queues/post-payment.queue';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([PaymentEntity, PaymentInvitationDetailsEntity]),
+    TypeOrmModule.forFeature([
+      PaymentEntity,
+      PaymentInvitationDetailsEntity,
+      UserEntity,
+    ]),
+    BullModule.registerQueue({
+      name: POST_PAYMENT_QUEUE_NAME,
+    }),
     StorageModule,
     GoogleSheetsModule,
+    MailModule,
     PayosModule,
     VnpayModule,
     AuthModule,
@@ -56,6 +70,8 @@ import type { IPaymentGateway } from './providers/payment-gateway.interface';
       inject: [ConfigService, PayosPaymentGatewayService, VnpayPaymentGatewayService],
     },
     PaymentsService,
+    PostPaymentQueueService,
+    PostPaymentProcessor,
   ],
   exports: [PaymentsService],
 })

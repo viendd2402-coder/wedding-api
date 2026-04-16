@@ -131,10 +131,6 @@ export class PaymentInvitationDetailsEntity {
   @Column({ type: 'jsonb', nullable: true })
   album?: PaymentInvitationAlbumItem[] | null;
 
-  /**
-   * Google Sheet (2 tab: xác nhận tham dự + lời chúc), tạo sau khi thanh toán thành công
-   * qua Web App Apps Script khi đã cấu hình `GOOGLE_SHEETS_APPS_SCRIPT_URL` và `GOOGLE_SHEETS_APPS_SCRIPT_SECRET`.
-   */
   @Column({ type: 'varchar', length: 255, nullable: true })
   guestBookSpreadsheetId?: string | null;
 
