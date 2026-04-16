@@ -5,6 +5,7 @@ import {
   IsOptional,
   IsString,
   ValidateNested,
+  IsNotEmpty,
 } from 'class-validator';
 
 export enum GuestBookAppendTab {
@@ -41,6 +42,7 @@ export class WishRowDto {
 
 export class AppendGuestBookDto {
   @IsString()
+  @IsNotEmpty()
   spreadsheetId!: string;
 
   @IsEnum(GuestBookAppendTab)
