@@ -2,7 +2,7 @@ import { Controller, Get, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { BypassResponseEnvelope } from '../../../common/decorators/bypass-response-envelope.decorator';
 import { VnpayService } from '../../../vnpay/vnpay.service';
-import { VnpayPaymentGatewayService } from '../../gateways/vnpay-payment-gateway.service';
+import { VnpayPaymentGatewayService } from './vnpay-payment-gateway.service';
 
 @Controller('payments/vnpay')
 export class VnpayCallbacksController {

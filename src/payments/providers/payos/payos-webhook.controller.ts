@@ -1,6 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { PayosWebhookDto } from '../../../payos/dto/payos-webhook.dto';
-import { PayosPaymentGatewayService } from '../../gateways/payos-payment-gateway.service';
+import { PayosPaymentGatewayService } from './payos-payment-gateway.service';
 
 /** Webhook PayOS: POST /api/payments/payos/webhook */
 @Controller('payments/payos')

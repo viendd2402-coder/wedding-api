@@ -47,18 +47,15 @@ export class PostPaymentProcessor extends WorkerHost {
   private async handleProvisionInvitationResources(
     job: Job<ProvisionInvitationResourcesJobData>,
   ): Promise<void> {
-    const invitationDetailsId = Number(job.data.invitationDetailsId);
-    if (!Number.isFinite(invitationDetailsId) || invitationDetailsId <= 0) {
+    const invitationDetailsId = this.parseInvitationDetailsId(job);
+    if (!invitationDetailsId) {
       this.logger.warn(
         `Invalid invitationDetailsId in job ${String(job.id)}: ${String(job.data.invitationDetailsId)}`,
       );
       return;
     }
 
-    const details = await this.invitationDetailsRepository.findOne({
-      where: { id: invitationDetailsId },
-      relations: { payment: true },
-    });
+    const details = await this.findInvitationDetailsWithPayment(invitationDetailsId);
     if (!details) {
       this.logger.warn(
         `Invitation details not found for post-payment job: invitationDetailsId=${invitationDetailsId}`,
@@ -76,7 +73,7 @@ export class PostPaymentProcessor extends WorkerHost {
       return;
     }
 
-    const userId = details.payment?.userId;
+    const userId = this.extractUserIdFromDetails(details);
     if (!userId) {
       this.logger.warn(
         `Skip thank-you email because payment userId is missing for invitationDetailsId=${details.id}`,
@@ -84,8 +81,7 @@ export class PostPaymentProcessor extends WorkerHost {
       return;
     }
 
-    const user = await this.userRepository.findOne({ where: { id: userId } });
-    const userEmail = user?.email?.trim();
+    const userEmail = await this.findUserEmailById(userId);
     if (!userEmail) {
       this.logger.warn(
         `Skip thank-you email because user email is missing for userId=${userId}`,
@@ -93,10 +89,7 @@ export class PostPaymentProcessor extends WorkerHost {
       return;
     }
 
-    const frontendBase = this.configService
-      .get<string>('FRONTEND_URL', 'http://localhost:3000')
-      .trim()
-      .replace(/\/$/, '');
+    const frontendBase = this.getFrontendBaseUrl();
     const invitationUrl = `${frontendBase}/invite/${encodeURIComponent(details.code)}`;
     const rsvpTrackingUrl = this.buildSheetTabUrl(
       sheet.spreadsheetUrl,
@@ -123,5 +116,40 @@ export class PostPaymentProcessor extends WorkerHost {
   private buildSheetTabUrl(spreadsheetUrl: string, tabTitle: string): string {
     const base = spreadsheetUrl.split('#')[0];
     return `${base}#range=${encodeURIComponent(`'${tabTitle}'!A1`)}`;
+  }
+
+  private parseInvitationDetailsId(
+    job: Job<ProvisionInvitationResourcesJobData>,
+  ): number | null {
+    const invitationDetailsId = Number(job.data.invitationDetailsId);
+    if (!Number.isFinite(invitationDetailsId) || invitationDetailsId <= 0) {
+      return null;
+    }
+    return invitationDetailsId;
+  }
+
+  private findInvitationDetailsWithPayment(
+    invitationDetailsId: number,
+  ): Promise<PaymentInvitationDetailsEntity | null> {
+    return this.invitationDetailsRepository.findOne({
+      where: { id: invitationDetailsId },
+      relations: { payment: true },
+    });
+  }
+
+  private extractUserIdFromDetails(details: PaymentInvitationDetailsEntity): number | null {
+    return details.payment?.userId ?? null;
+  }
+
+  private async findUserEmailById(userId: number): Promise<string | null> {
+    const user = await this.userRepository.findOne({ where: { id: userId } });
+    return user?.email?.trim() ?? null;
+  }
+
+  private getFrontendBaseUrl(): string {
+    return this.configService
+      .get<string>('FRONTEND_URL', 'http://localhost:3000')
+      .trim()
+      .replace(/\/$/, '');
   }
 }

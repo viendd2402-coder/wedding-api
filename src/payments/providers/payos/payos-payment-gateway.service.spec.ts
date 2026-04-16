@@ -1,9 +1,10 @@
 import { BadRequestException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
-import { ConfigService } from '@nestjs/config';
-import { PayosService } from '../../payos/payos.service';
-import { PaymentEntity, PaymentStatus } from '../entities/payment.entity';
+import { PayosService } from '../../../payos/payos.service';
+import { PaymentEntity, PaymentStatus } from '../../entities/payment.entity';
+import { PaymentInvitationDetailsService } from '../../services/payment-invitation-details.service';
 import { PayosPaymentGatewayService } from './payos-payment-gateway.service';
 
 describe('PayosPaymentGatewayService', () => {
@@ -16,6 +17,10 @@ describe('PayosPaymentGatewayService', () => {
   let payosService: {
     verifyWebhook: jest.Mock;
   };
+  let paymentInvitationDetailsService: {
+    buildInvitationDraftFromDto: jest.Mock;
+    persistInvitationDetailsAfterPaidSafe: jest.Mock;
+  };
 
   beforeEach(async () => {
     paymentRepository = {
@@ -25,6 +30,10 @@ describe('PayosPaymentGatewayService', () => {
     };
     payosService = {
       verifyWebhook: jest.fn(),
+    };
+    paymentInvitationDetailsService = {
+      buildInvitationDraftFromDto: jest.fn(),
+      persistInvitationDetailsAfterPaidSafe: jest.fn(),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -41,6 +50,10 @@ describe('PayosPaymentGatewayService', () => {
         {
           provide: PayosService,
           useValue: payosService,
+        },
+        {
+          provide: PaymentInvitationDetailsService,
+          useValue: paymentInvitationDetailsService,
         },
       ],
     }).compile();

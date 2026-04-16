@@ -100,47 +100,12 @@ export class PaymentsService {
     dto: CreateFreeInvitationDto,
   ): Promise<CreateFreeInvitationResponse> {
     const inv = dto.invitation;
-    const templateDef = getInvitationTemplateBySlug(inv.templateSlug);
-    if (!templateDef?.isFree) {
-      throw new BadRequestException({
-        message:
-          'Template này không miễn phí. Hãy dùng POST /payments/payment-link để thanh toán.',
-        messageCode: 'MSG_TEMPLATE_NOT_FREE',
-      });
-    }
+    const templateDef = this.getValidatedFreeTemplate(inv.templateSlug);
 
     const providerOrderCode = String(generatePaymentOrderCode());
     const code = randomBytes(16).toString('hex');
-
-    let weddingDate: Date | null = null;
-    if (inv.weddingDate?.trim()) {
-      const parsed = new Date(inv.weddingDate.trim());
-      weddingDate = Number.isNaN(parsed.getTime()) ? null : parsed;
-    }
-
-    let album: PaymentInvitationAlbumItem[] | null = null;
-    if (inv.album?.length) {
-      const items = inv.album
-        .map((item): PaymentInvitationAlbumItem | null => {
-          const storageKey = item.storageKey?.trim() ?? '';
-          if (!storageKey) {
-            return null;
-          }
-          return {
-            storageKey: storageKey.slice(0, 500),
-            caption:
-              typeof item.caption === 'string'
-                ? item.caption.slice(0, 500)
-                : null,
-            ...(typeof item.sortOrder === 'number' &&
-            Number.isFinite(item.sortOrder)
-              ? { sortOrder: Math.max(0, Math.floor(item.sortOrder)) }
-              : {}),
-          };
-        })
-        .filter((x): x is PaymentInvitationAlbumItem => x !== null);
-      album = items.length > 0 ? items : null;
-    }
+    const weddingDate = this.parseWeddingDate(inv.weddingDate);
+    const album = this.normalizeInvitationAlbum(inv.album);
 
     const { response, savedDetails } =
       await this.paymentRepository.manager.transaction(
@@ -220,6 +185,59 @@ export class PaymentsService {
       (err as QueryFailedError & { driverError?: { code?: string } })
         .driverError?.code === '23505'
     );
+  }
+
+  private getValidatedFreeTemplate(templateSlug: string): {
+    templateSlug: string;
+    templateName: string;
+    isFree: true;
+  } {
+    const templateDef = getInvitationTemplateBySlug(templateSlug);
+    if (!templateDef?.isFree) {
+      throw new BadRequestException({
+        message:
+          'Template này không miễn phí. Hãy dùng POST /payments/payment-link để thanh toán.',
+        messageCode: 'MSG_TEMPLATE_NOT_FREE',
+      });
+    }
+    return templateDef as { templateSlug: string; templateName: string; isFree: true };
+  }
+
+  private parseWeddingDate(rawWeddingDate?: string): Date | null {
+    if (!rawWeddingDate?.trim()) {
+      return null;
+    }
+    const parsed = new Date(rawWeddingDate.trim());
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+
+  private normalizeInvitationAlbum(
+    albumInput?: Array<{
+      storageKey: string;
+      caption?: string | null;
+      sortOrder?: number | null;
+    }> | null,
+  ): PaymentInvitationAlbumItem[] | null {
+    if (!albumInput?.length) {
+      return null;
+    }
+    const items = albumInput
+      .map((item): PaymentInvitationAlbumItem | null => {
+        const storageKey = item.storageKey?.trim() ?? '';
+        if (!storageKey) {
+          return null;
+        }
+        return {
+          storageKey: storageKey.slice(0, 500),
+          caption:
+            typeof item.caption === 'string' ? item.caption.slice(0, 500) : null,
+          ...(typeof item.sortOrder === 'number' && Number.isFinite(item.sortOrder)
+            ? { sortOrder: Math.max(0, Math.floor(item.sortOrder)) }
+            : {}),
+        };
+      })
+      .filter((x): x is PaymentInvitationAlbumItem => x !== null);
+    return items.length > 0 ? items : null;
   }
 
   async getPaymentById(

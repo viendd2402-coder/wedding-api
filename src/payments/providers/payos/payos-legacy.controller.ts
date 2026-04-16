@@ -3,8 +3,8 @@ import { CurrentUserId } from '../../../auth/decorators/current-user-id.decorato
 import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { PayosWebhookDto } from '../../../payos/dto/payos-webhook.dto';
 import { CreatePaymentLinkDto } from '../../dto/create-payment-link.dto';
-import { PayosPaymentGatewayService } from '../../gateways/payos-payment-gateway.service';
 import { CreatePaymentLinkResponse } from '../../types/payment.types';
+import { PayosPaymentGatewayService } from './payos-payment-gateway.service';
 
 /**
  * Prefix /api/payos/* — luôn PayOS (link + webhook), tương thích client cũ.

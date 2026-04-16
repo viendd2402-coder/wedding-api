@@ -11,21 +11,22 @@ import { StorageModule } from '../storage/storage.module';
 import { VnpayModule } from '../vnpay/vnpay.module';
 import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
 import { PaymentEntity } from './entities/payment.entity';
-import { PayosPaymentGatewayService } from './gateways/payos-payment-gateway.service';
-import { VnpayPaymentGatewayService } from './gateways/vnpay-payment-gateway.service';
-import { PayosLegacyPaymentsController } from './integrations/payos/payos-legacy.controller';
-import { PayosWebhookController } from './integrations/payos/payos-webhook.controller';
-import { VnpayCallbacksController } from './integrations/vnpay/vnpay-callbacks.controller';
 import { getActivePaymentProvider } from './payment-provider';
 import { PaymentInvitationPublicController } from './payment-invitation-public.controller';
 import { PaymentsController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { PayosLegacyPaymentsController } from './providers/payos/payos-legacy.controller';
+import { PayosPaymentGatewayService } from './providers/payos/payos-payment-gateway.service';
 import { getPaymentGatewayFromRegistry } from './providers/payment-gateway.registry';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import type { IPaymentGateway } from './providers/payment-gateway.interface';
+import { PayosWebhookController } from './providers/payos/payos-webhook.controller';
+import { VnpayCallbacksController } from './providers/vnpay/vnpay-callbacks.controller';
+import { VnpayPaymentGatewayService } from './providers/vnpay/vnpay-payment-gateway.service';
 import { PostPaymentProcessor } from './queues/post-payment.processor';
 import { PostPaymentQueueService } from './queues/post-payment-queue.service';
 import { POST_PAYMENT_QUEUE_NAME } from './queues/post-payment.queue';
+import { PaymentInvitationDetailsService } from './services/payment-invitation-details.service';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { POST_PAYMENT_QUEUE_NAME } from './queues/post-payment.queue';
     PaymentsService,
     PostPaymentQueueService,
     PostPaymentProcessor,
+    PaymentInvitationDetailsService,
   ],
   exports: [PaymentsService],
 })
