@@ -100,7 +100,7 @@ export class PostPaymentProcessor extends WorkerHost {
       GUEST_BOOK_WISHES_TAB_TITLE,
     );
 
-    await this.mailService.sendPostPaymentThankYouEmailNow({
+    await this.mailService.enqueuePostPaymentThankYouEmail({
       to: userEmail,
       invitationCode: details.code,
       brideName: details.brideName,

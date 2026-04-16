@@ -154,7 +154,7 @@ export class AuthService implements OnModuleInit {
       user = updatedUser ?? user;
 
       if (user.email && user.resetToken && user.resetTokenExpiresAt) {
-        await this.mailService.sendResetPasswordEmail(
+        await this.mailService.enqueueResetPasswordEmail(
           user.email,
           user.resetToken,
           user.resetTokenExpiresAt,

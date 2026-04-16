@@ -2,8 +2,10 @@ import { Logger } from '@nestjs/common';
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import {
+  MAIL_JOB_SEND_POST_PAYMENT_THANK_YOU,
   MAIL_JOB_SEND_RESET_PASSWORD,
   MAIL_QUEUE_NAME,
+  SendPostPaymentThankYouMailJobData,
   SendResetPasswordMailJobData,
 } from './mail.queue';
 import { MailService } from './mail.service';
@@ -17,11 +19,18 @@ export class MailProcessor extends WorkerHost {
     super();
   }
 
-  async process(job: Job<SendResetPasswordMailJobData>): Promise<void> {
+  async process(
+    job: Job<SendResetPasswordMailJobData | SendPostPaymentThankYouMailJobData>,
+  ): Promise<void> {
     try {
       switch (job.name) {
         case MAIL_JOB_SEND_RESET_PASSWORD:
-          await this.handleResetPasswordJob(job);
+          await this.handleResetPasswordJob(job as Job<SendResetPasswordMailJobData>);
+          return;
+        case MAIL_JOB_SEND_POST_PAYMENT_THANK_YOU:
+          await this.handlePostPaymentThankYouJob(
+            job as Job<SendPostPaymentThankYouMailJobData>,
+          );
           return;
         default:
           this.logger.warn(`Unsupported mail job: ${job.name}`);
@@ -48,5 +57,11 @@ export class MailProcessor extends WorkerHost {
       resetToken,
       expiresAt,
     );
+  }
+
+  private async handlePostPaymentThankYouJob(
+    job: Job<SendPostPaymentThankYouMailJobData>,
+  ): Promise<void> {
+    await this.mailService.sendPostPaymentThankYouEmailNow(job.data);
   }
 }
