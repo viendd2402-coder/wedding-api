@@ -5,3 +5,7 @@ export type GoogleSheetsAuthTestResponse = {
   spreadsheetId: string;
   spreadsheetUrl: string;
 };
+
+export type GoogleSheetsAppendResponse = {
+  ok: true;
+};

@@ -1,7 +1,11 @@
-import { Controller, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { AppendGuestBookDto } from './dto/append-guest-book.dto';
 import { GoogleSheetsService } from './google-sheets.service';
-import type { GoogleSheetsAuthTestResponse } from './google-sheets.types.js';
+import type {
+  GoogleSheetsAppendResponse,
+  GoogleSheetsAuthTestResponse,
+} from './google-sheets.types.js';
 
 @Controller('google-sheets')
 export class GoogleSheetsController {
@@ -21,5 +25,16 @@ export class GoogleSheetsController {
       brideName ?? '',
       groomName ?? '',
     );
+  }
+
+  /**
+   * Append một dòng vào tab RSVP hoặc tab lời chúc (Apps Script `action: append`).
+   */
+  @Post('guest-book/append')
+  @UseGuards(JwtAuthGuard)
+  appendGuestBook(
+    @Body() dto: AppendGuestBookDto,
+  ): Promise<GoogleSheetsAppendResponse> {
+    return this.googleSheetsService.appendGuestBookRow(dto);
   }
 }

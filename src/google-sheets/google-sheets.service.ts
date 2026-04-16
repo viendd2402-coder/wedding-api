@@ -15,7 +15,14 @@ import {
   GUEST_BOOK_WISH_HEADERS,
   GUEST_BOOK_WISHES_TAB_TITLE,
 } from './guest-book-sheet.constants';
-import type { GoogleSheetsAuthTestResponse } from './google-sheets.types.js';
+import {
+  AppendGuestBookDto,
+  GuestBookAppendTab,
+} from './dto/append-guest-book.dto';
+import type {
+  GoogleSheetsAppendResponse,
+  GoogleSheetsAuthTestResponse,
+} from './google-sheets.types.js';
 
 @Injectable()
 export class GoogleSheetsService {
@@ -104,40 +111,18 @@ export class GoogleSheetsService {
     return cfg;
   }
 
-  private async postAppsScriptCreateSheet(
-    title: string,
+  private async callAppsScript(
     cfg: { url: string; secret: string },
-  ): Promise<{
-    spreadsheetId: string;
-    spreadsheetUrl: string;
-  }> {
-    const editorEmail = this.configService
-      .get<string>('GOOGLE_SHEETS_EDITOR_EMAIL', '')
-      ?.trim();
-
-    const payload: Record<string, unknown> = {
-      secret: cfg.secret,
-      title,
-      shareToEmail: editorEmail || undefined,
-      sheets: [
-        {
-          title: GUEST_BOOK_RSVP_TAB_TITLE,
-          headers: Array.from(GUEST_BOOK_RSVP_HEADERS),
-        },
-        {
-          title: GUEST_BOOK_WISHES_TAB_TITLE,
-          headers: Array.from(GUEST_BOOK_WISH_HEADERS),
-        },
-      ],
-    };
-
+    payload: Record<string, unknown>,
+  ): Promise<Record<string, unknown>> {
+    const bodyPayload = { ...payload, secret: cfg.secret };
     const res = await fetch(cfg.url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'X-Webhook-Secret': cfg.secret,
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(bodyPayload),
     });
 
     if (!res.ok) {
@@ -167,19 +152,42 @@ export class GoogleSheetsService {
       throw new Error('Apps Script trả về dữ liệu không hợp lệ');
     }
 
-    const record = data as {
-      spreadsheetId?: unknown;
-      spreadsheetUrl?: unknown;
-      url?: unknown;
-      ok?: unknown;
-      error?: unknown;
-    };
-
+    const record = data as Record<string, unknown>;
     if (record.ok === false) {
       const errMsg =
         typeof record.error === 'string' ? record.error : 'Apps Script báo lỗi';
       throw new Error(errMsg);
     }
+
+    return record;
+  }
+
+  private async postAppsScriptCreateSheet(
+    title: string,
+    cfg: { url: string; secret: string },
+  ): Promise<{
+    spreadsheetId: string;
+    spreadsheetUrl: string;
+  }> {
+    const editorEmail = this.configService
+      .get<string>('GOOGLE_SHEETS_EDITOR_EMAIL', '')
+      ?.trim();
+
+    const record = await this.callAppsScript(cfg, {
+      action: 'create',
+      title,
+      shareToEmail: editorEmail || undefined,
+      sheets: [
+        {
+          title: GUEST_BOOK_RSVP_TAB_TITLE,
+          headers: Array.from(GUEST_BOOK_RSVP_HEADERS),
+        },
+        {
+          title: GUEST_BOOK_WISHES_TAB_TITLE,
+          headers: Array.from(GUEST_BOOK_WISH_HEADERS),
+        },
+      ],
+    });
 
     const spreadsheetId =
       typeof record.spreadsheetId === 'string'
@@ -200,6 +208,53 @@ export class GoogleSheetsService {
       spreadsheetId,
       spreadsheetUrl: spreadsheetUrlRaw,
     };
+  }
+
+  async appendGuestBookRow(
+    dto: AppendGuestBookDto,
+  ): Promise<GoogleSheetsAppendResponse> {
+    const cfg = this.requireAppsScriptConfig();
+    const id = dto.spreadsheetId.trim();
+    if (!id) {
+      throw new BadRequestException('spreadsheetId không hợp lệ');
+    }
+
+    let row: string[];
+    if (dto.tab === GuestBookAppendTab.RSVP) {
+      if (!dto.rsvp) {
+        throw new BadRequestException('Thiếu object rsvp khi tab=rsvp');
+      }
+      const r = dto.rsvp;
+      row = [
+        r.fullName.trim(),
+        r.phone.trim(),
+        r.guestCount.trim(),
+        r.willAttend.trim(),
+        (r.note ?? '').trim(),
+      ];
+    } else {
+      if (!dto.wish) {
+        throw new BadRequestException('Thiếu object wish khi tab=wish');
+      }
+      const w = dto.wish;
+      row = [(w.displayName ?? '').trim(), w.message.trim()];
+    }
+
+    try {
+      const record = await this.callAppsScript(cfg, {
+        action: 'append',
+        spreadsheetId: id,
+        tab: dto.tab,
+        row,
+      });
+      if (record.ok !== true) {
+        throw new Error('Apps Script không xác nhận append');
+      }
+      return { ok: true };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(`Không append được vào Sheet: ${msg}`);
+    }
   }
 
   async createSheetViaAppsScript(title: string): Promise<{
