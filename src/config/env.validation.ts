@@ -33,9 +33,9 @@ type AppEnv = {
   VNPAY_TMN_CODE: string;
   VNPAY_HASH_SECRET: string;
   VNPAY_PAYMENT_URL: string;
-  GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH: string;
-  GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: string;
   GOOGLE_SHEETS_EDITOR_EMAIL: string;
+  GOOGLE_SHEETS_APPS_SCRIPT_URL: string;
+  GOOGLE_SHEETS_APPS_SCRIPT_SECRET: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -263,24 +263,23 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? vnpayPaymentUrlInput.trim()
       : 'https://sandbox.vnpayment.vn/paymentv2/vpcpay.html';
 
-  const googleSheetsServiceAccountJsonPathInput =
-    config.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH;
-  const googleSheetsServiceAccountJsonPath =
-    typeof googleSheetsServiceAccountJsonPathInput === 'string'
-      ? googleSheetsServiceAccountJsonPathInput.trim()
-      : '';
-
-  const googleSheetsServiceAccountJsonInput =
-    config.GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON;
-  const googleSheetsServiceAccountJson =
-    typeof googleSheetsServiceAccountJsonInput === 'string'
-      ? googleSheetsServiceAccountJsonInput.trim()
-      : '';
-
   const googleSheetsEditorEmailInput = config.GOOGLE_SHEETS_EDITOR_EMAIL;
   const googleSheetsEditorEmail =
     typeof googleSheetsEditorEmailInput === 'string'
       ? googleSheetsEditorEmailInput.trim()
+      : '';
+
+  const googleSheetsAppsScriptUrlInput = config.GOOGLE_SHEETS_APPS_SCRIPT_URL;
+  const googleSheetsAppsScriptUrl =
+    typeof googleSheetsAppsScriptUrlInput === 'string'
+      ? googleSheetsAppsScriptUrlInput.trim()
+      : '';
+
+  const googleSheetsAppsScriptSecretInput =
+    config.GOOGLE_SHEETS_APPS_SCRIPT_SECRET;
+  const googleSheetsAppsScriptSecret =
+    typeof googleSheetsAppsScriptSecretInput === 'string'
+      ? googleSheetsAppsScriptSecretInput.trim()
       : '';
 
   return {
@@ -318,8 +317,8 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     VNPAY_TMN_CODE: vnpayTmnCode,
     VNPAY_HASH_SECRET: vnpayHashSecret,
     VNPAY_PAYMENT_URL: vnpayPaymentUrl,
-    GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH: googleSheetsServiceAccountJsonPath,
-    GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON: googleSheetsServiceAccountJson,
     GOOGLE_SHEETS_EDITOR_EMAIL: googleSheetsEditorEmail,
+    GOOGLE_SHEETS_APPS_SCRIPT_URL: googleSheetsAppsScriptUrl,
+    GOOGLE_SHEETS_APPS_SCRIPT_SECRET: googleSheetsAppsScriptSecret,
   };
 }

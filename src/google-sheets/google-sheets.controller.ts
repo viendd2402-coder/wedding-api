@@ -1,4 +1,4 @@
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Post, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GoogleSheetsService } from './google-sheets.service';
 import type { GoogleSheetsAuthTestResponse } from './google-sheets.types.js';
@@ -8,18 +8,18 @@ export class GoogleSheetsController {
   constructor(private readonly googleSheetsService: GoogleSheetsService) {}
 
   /**
-   * Kiểm tra đọc service account (file hoặc env), token Google, và (mặc định) tạo 1 Sheet test
-   * để trả về URL mở trên trình duyệt. `skipCreate=true` chỉ kiểm tra credentials.
+   * Tạo một Google Sheet test qua Apps Script webhook.
+   * Query: `brideName`, `groomName` (dùng làm tiêu đề file).
    */
-  @Get('test-auth')
+  @Post('create-sheet')
   @UseGuards(JwtAuthGuard)
-  testAuth(
-    @Query('skipCreate') skipCreate?: string,
+  createSheet(
+    @Query('brideName') brideName: string,
+    @Query('groomName') groomName: string,
   ): Promise<GoogleSheetsAuthTestResponse> {
-    const skip =
-      skipCreate === '1' ||
-      skipCreate === 'true' ||
-      skipCreate === 'yes';
-    return this.googleSheetsService.testSheetsAuth({ skipCreate: skip });
+    return this.googleSheetsService.createTestSheetViaAppsScript(
+      brideName ?? '',
+      groomName ?? '',
+    );
   }
 }

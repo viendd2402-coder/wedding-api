@@ -17,8 +17,3 @@ export const GUEST_BOOK_WISH_HEADERS = [
   'Họ và tên (tuỳ chọn)',
   'Lời chúc',
 ] as const;
-
-export function quoteSheetRangeA1(tabTitle: string, a1: string): string {
-  const escaped = tabTitle.replace(/'/g, "''");
-  return `'${escaped}'!${a1}`;
-}

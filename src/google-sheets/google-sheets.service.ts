@@ -7,11 +7,6 @@ import {
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { JWT } from 'google-auth-library';
-import { GaxiosError } from 'gaxios';
-import { google } from 'googleapis';
-import { readFileSync } from 'node:fs';
-import { isAbsolute, join } from 'node:path';
 import { IsNull, Repository } from 'typeorm';
 import { PaymentInvitationDetailsEntity } from '../payments/entities/payment-invitation-details.entity';
 import {
@@ -19,7 +14,6 @@ import {
   GUEST_BOOK_RSVP_TAB_TITLE,
   GUEST_BOOK_WISH_HEADERS,
   GUEST_BOOK_WISHES_TAB_TITLE,
-  quoteSheetRangeA1,
 } from './guest-book-sheet.constants';
 import type { GoogleSheetsAuthTestResponse } from './google-sheets.types.js';
 
@@ -34,8 +28,8 @@ export class GoogleSheetsService {
   ) {}
 
   /**
-   * Tạo Google Sheet (2 tab + hàng tiêu đề) nền, không chặn webhook thanh toán.
-   * Bỏ qua nếu thiếu cấu hình service account (file hoặc env) hoặc đã có `guestBookSpreadsheetId`.
+   * Tạo Google Sheet (2 tab + hàng tiêu đề) qua Apps Script webhook.
+   * Bỏ qua nếu thiếu URL/secret hoặc đã có `guestBookSpreadsheetId`.
    */
   scheduleGuestBookSpreadsheet(
     details: PaymentInvitationDetailsEntity,
@@ -59,52 +53,16 @@ export class GoogleSheetsService {
       return;
     }
 
-    const auth = this.buildSheetsJwt();
-    if (!auth) {
+    const cfg = this.resolveAppsScriptConfig();
+    if (!cfg) {
       this.logger.warn(
-        'Bỏ qua tạo Google Sheet: chưa cấu hình GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH hoặc GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON',
+        'Bỏ qua tạo Google Sheet: thiếu GOOGLE_SHEETS_APPS_SCRIPT_URL hoặc GOOGLE_SHEETS_APPS_SCRIPT_SECRET',
       );
       return;
     }
 
-    await auth.authorize();
-
-    const sheets = google.sheets({ version: 'v4', auth });
     const title = this.buildSpreadsheetTitle(row.brideName, row.groomName);
-
-    const created = await sheets.spreadsheets.create({
-      requestBody: {
-        properties: { title },
-        sheets: [
-          { properties: { title: GUEST_BOOK_RSVP_TAB_TITLE } },
-          { properties: { title: GUEST_BOOK_WISHES_TAB_TITLE } },
-        ],
-      },
-    });
-
-    const spreadsheetId = created.data.spreadsheetId;
-    if (!spreadsheetId) {
-      throw new Error('Google Sheets create: thiếu spreadsheetId');
-    }
-
-    await sheets.spreadsheets.values.batchUpdate({
-      spreadsheetId,
-      requestBody: {
-        valueInputOption: 'USER_ENTERED',
-        data: [
-          {
-            range: quoteSheetRangeA1(GUEST_BOOK_RSVP_TAB_TITLE, 'A1:E1'),
-            values: [Array.from(GUEST_BOOK_RSVP_HEADERS)],
-          },
-          {
-            range: quoteSheetRangeA1(GUEST_BOOK_WISHES_TAB_TITLE, 'A1:B1'),
-            values: [Array.from(GUEST_BOOK_WISH_HEADERS)],
-          },
-        ],
-      },
-    });
-
-    await this.shareSpreadsheetIfConfigured(auth, spreadsheetId);
+    const { spreadsheetId } = await this.createSheetViaAppsScript(title);
 
     const updateResult = await this.invitationDetailsRepository.update(
       { id: row.id, guestBookSpreadsheetId: IsNull() },
@@ -119,229 +77,171 @@ export class GoogleSheetsService {
   }
 
   private buildSpreadsheetTitle(brideName: string, groomName: string): string {
-    const raw = `Khách mời — ${groomName.trim()} & ${brideName.trim()}`;
+    const raw = `Wedding — ${groomName.trim()} & ${brideName.trim()}`;
     return raw.length > 100 ? `${raw.slice(0, 97)}...` : raw;
   }
 
-  /**
-   * Đọc JSON service account: ưu tiên file (`GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH`),
-   * nếu không đọc được thì dùng biến `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON`.
-   */
-  private resolveServiceAccountJson():
-    | { raw: string; source: 'file' | 'env' }
-    | null {
-    const pathRaw = this.configService
-      .get<string>('GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH', '')
+  private resolveAppsScriptConfig(): { url: string; secret: string } | null {
+    const url = this.configService
+      .get<string>('GOOGLE_SHEETS_APPS_SCRIPT_URL', '')
       ?.trim();
-    if (pathRaw) {
-      try {
-        const resolved = isAbsolute(pathRaw) ? pathRaw : join(process.cwd(), pathRaw);
-        const raw = readFileSync(resolved, 'utf8').trim();
-        if (raw) {
-          return { raw, source: 'file' };
-        }
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err);
-        this.logger.warn(
-          `Không đọc được GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH (${pathRaw}): ${msg}`,
-        );
-      }
-    }
-
-    const envRaw = this.configService
-      .get<string>('GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON', '')
+    const secret = this.configService
+      .get<string>('GOOGLE_SHEETS_APPS_SCRIPT_SECRET', '')
       ?.trim();
-    if (envRaw) {
-      return { raw: envRaw, source: 'env' };
-    }
-    return null;
-  }
-
-  private parseServiceAccountKeys(raw: string): {
-    client_email: string;
-    private_key: string;
-  } | null {
-    let parsed: { client_email?: string; private_key?: string };
-    try {
-      parsed = JSON.parse(raw) as { client_email?: string; private_key?: string };
-    } catch {
-      this.logger.warn('Service account JSON không phải JSON hợp lệ');
+    if (!url || !secret) {
       return null;
     }
-
-    const client_email =
-      typeof parsed.client_email === 'string' ? parsed.client_email.trim() : '';
-    const private_key =
-      typeof parsed.private_key === 'string' ? parsed.private_key.trim() : '';
-    if (!client_email || !private_key) {
-      this.logger.warn('Service account JSON thiếu client_email hoặc private_key');
-      return null;
-    }
-    return { client_email, private_key };
+    return { url, secret };
   }
 
-  private createSheetsJwt(clientEmail: string, privateKey: string): JWT {
-    return new JWT({
-      email: clientEmail,
-      key: privateKey,
-      scopes: [
-        'https://www.googleapis.com/auth/spreadsheets',
-        // `drive.file` đôi khi không đủ cho tạo/chia sẻ Sheet qua API; `drive` phù hợp server-side SA.
-        'https://www.googleapis.com/auth/drive',
-      ],
-    });
-  }
-
-  /** Chuỗi gợi ý dựa trên payload lỗi Google (AIP-193). */
-  private hintsForSheetsCreateFailure(googleDetail: string): string {
-    const u = googleDetail.toUpperCase();
-    if (u.includes('SERVICE_DISABLED')) {
-      return ' Google báo SERVICE_DISABLED: API chưa bật trên đúng project (đối chiếu `project_id` trong JSON với project đang chọn trên console), hoặc chờ vài phút sau khi bật API.';
-    }
-    if (u.includes('ACCESS_TOKEN_SCOPE') || u.includes('INSUFFICIENT_SCOPE')) {
-      return ' Thiếu OAuth scope: đã dùng scope spreadsheets+drive; restart API sau khi deploy.';
-    }
-    if (u.includes('CONSUMER_INVALID')) {
-      return ' CONSUMER_INVALID thường gặp khi project chưa liên kết billing hoặc project không hợp lệ — kiểm tra Billing & project_id.';
-    }
-    if (u.includes('PERMISSION_DENIED') || u.includes('PERMISSION')) {
-      return ' Vẫn PERMISSION: xác nhận IAM → Service Accounts → email trong JSON không Disabled; nếu công ty dùng Google Workspace, hỏi admin có policy chặn Drive/Sheets cho service account không.';
-    }
-    return '';
-  }
-
-  private formatGoogleClientError(err: unknown): { summary: string; detail?: string } {
-    if (err instanceof GaxiosError) {
-      const status = err.response?.status;
-      const summary =
-        status != null ? `${err.message} (HTTP ${status})` : err.message;
-      const data = err.response?.data;
-      if (data !== null && data !== undefined && typeof data === 'object') {
-        let detail = JSON.stringify(data);
-        if (detail.length > 1800) {
-          detail = `${detail.slice(0, 1800)}…`;
-        }
-        return { summary, detail };
-      }
-      return { summary };
-    }
-    return { summary: err instanceof Error ? err.message : String(err) };
-  }
-
-  private buildSheetsJwt(): JWT | null {
-    const resolved = this.resolveServiceAccountJson();
-    if (!resolved) {
-      return null;
-    }
-    const keys = this.parseServiceAccountKeys(resolved.raw);
-    if (!keys) {
-      return null;
-    }
-    return this.createSheetsJwt(keys.client_email, keys.private_key);
-  }
-
-  async testSheetsAuth(options?: {
-    skipCreate?: boolean;
-  }): Promise<GoogleSheetsAuthTestResponse> {
-    const skipCreate = Boolean(options?.skipCreate);
-    const resolved = this.resolveServiceAccountJson();
-    if (!resolved) {
+  private requireAppsScriptConfig(): { url: string; secret: string } {
+    const cfg = this.resolveAppsScriptConfig();
+    if (!cfg) {
       throw new ServiceUnavailableException(
-        'Chưa cấu hình Google Sheets: đặt GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH (file JSON) hoặc GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON.',
+        'Thiếu GOOGLE_SHEETS_APPS_SCRIPT_URL hoặc GOOGLE_SHEETS_APPS_SCRIPT_SECRET.',
       );
     }
-    const keys = this.parseServiceAccountKeys(resolved.raw);
-    if (!keys) {
-      throw new BadRequestException(
-        'Service account JSON không hợp lệ (thiếu client_email/private_key hoặc không parse được).',
-      );
-    }
-    const jwt = this.createSheetsJwt(keys.client_email, keys.private_key);
-    try {
-      await jwt.authorize();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err);
-      this.logger.error(`Google Sheets test-auth authorize thất bại: ${msg}`);
-      throw new BadGatewayException(`Google từ chối credentials: ${msg}`);
-    }
-
-    if (skipCreate) {
-      return {
-        ok: true,
-        credentialSource: resolved.source,
-        clientEmail: keys.client_email,
-        spreadsheetId: null,
-        spreadsheetUrl: null,
-      };
-    }
-
-    const sheets = google.sheets({ version: 'v4', auth: jwt });
-    const title = `Wedding API — test ${new Date().toISOString().slice(0, 19)}Z`;
-    let spreadsheetId: string;
-    try {
-      const created = await sheets.spreadsheets.create({
-        requestBody: {
-          properties: { title },
-        },
-      });
-      const id = created.data.spreadsheetId;
-      if (!id) {
-        throw new Error('Google Sheets create: thiếu spreadsheetId');
-      }
-      spreadsheetId = id;
-    } catch (err: unknown) {
-      const { summary, detail } = this.formatGoogleClientError(err);
-      const logBody = detail ? `${summary} | ${detail}` : summary;
-      this.logger.error(`Google Sheets test-auth tạo Sheet thất bại: ${logBody}`);
-      const hintSource = `${summary} ${detail ?? ''}`;
-      const specific = this.hintsForSheetsCreateFailure(hintSource);
-      const generic =
-        /permission|403|PERMISSION_DENIED/i.test(hintSource) && !specific
-          ? ' Kiểm tra đúng project (project_id trong JSON = project trên console), bật Google Sheets API + Google Drive API, restart server.'
-          : '';
-      const detailSuffix = detail ? ` Chi tiết: ${detail}` : '';
-      throw new BadGatewayException(
-        `Không tạo được Sheet test: ${summary}.${detailSuffix}${specific || generic ? ` ${specific || generic}` : ''}`,
-      );
-    }
-
-    await this.shareSpreadsheetIfConfigured(jwt, spreadsheetId);
-
-    return {
-      ok: true,
-      credentialSource: resolved.source,
-      clientEmail: keys.client_email,
-      spreadsheetId,
-      spreadsheetUrl: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
-    };
+    return cfg;
   }
 
-  private async shareSpreadsheetIfConfigured(
-    auth: JWT,
-    spreadsheetId: string,
-  ): Promise<void> {
+  private async postAppsScriptCreateSheet(
+    title: string,
+    cfg: { url: string; secret: string },
+  ): Promise<{
+    spreadsheetId: string;
+    spreadsheetUrl: string;
+  }> {
     const editorEmail = this.configService
       .get<string>('GOOGLE_SHEETS_EDITOR_EMAIL', '')
       ?.trim();
-    if (!editorEmail) {
-      return;
+
+    const payload: Record<string, unknown> = {
+      secret: cfg.secret,
+      title,
+      shareToEmail: editorEmail || undefined,
+      sheets: [
+        {
+          title: GUEST_BOOK_RSVP_TAB_TITLE,
+          headers: Array.from(GUEST_BOOK_RSVP_HEADERS),
+        },
+        {
+          title: GUEST_BOOK_WISHES_TAB_TITLE,
+          headers: Array.from(GUEST_BOOK_WISH_HEADERS),
+        },
+      ],
+    };
+
+    const res = await fetch(cfg.url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Webhook-Secret': cfg.secret,
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      throw new Error(`Apps Script HTTP ${res.status}: ${body.slice(0, 500)}`);
     }
 
-    const drive = google.drive({ version: 'v3', auth });
+    const contentType = res.headers.get('content-type') ?? '';
+    const rawBody = await res.text();
+    if (!contentType.toLowerCase().includes('application/json')) {
+      const preview = rawBody.slice(0, 400);
+      throw new Error(
+        `Apps Script trả không phải JSON (content-type=${contentType || 'unknown'}). Preview: ${preview}`,
+      );
+    }
+
+    let data: unknown;
     try {
-      await drive.permissions.create({
-        fileId: spreadsheetId,
-        requestBody: {
-          type: 'user',
-          role: 'writer',
-          emailAddress: editorEmail,
-        },
-        sendNotificationEmail: true,
-      });
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      this.logger.warn(
-        `Không thêm quyền chỉnh sửa cho ${editorEmail} (spreadsheetId=${spreadsheetId}): ${msg}`,
+      data = JSON.parse(rawBody) as unknown;
+    } catch {
+      throw new Error(
+        `Apps Script body không parse được JSON. Preview: ${rawBody.slice(0, 400)}`,
+      );
+    }
+
+    if (!data || typeof data !== 'object') {
+      throw new Error('Apps Script trả về dữ liệu không hợp lệ');
+    }
+
+    const record = data as {
+      spreadsheetId?: unknown;
+      spreadsheetUrl?: unknown;
+      url?: unknown;
+      ok?: unknown;
+      error?: unknown;
+    };
+
+    if (record.ok === false) {
+      const errMsg =
+        typeof record.error === 'string' ? record.error : 'Apps Script báo lỗi';
+      throw new Error(errMsg);
+    }
+
+    const spreadsheetId =
+      typeof record.spreadsheetId === 'string'
+        ? record.spreadsheetId.trim()
+        : '';
+    const spreadsheetUrlRaw =
+      typeof record.spreadsheetUrl === 'string'
+        ? record.spreadsheetUrl.trim()
+        : typeof record.url === 'string'
+          ? record.url.trim()
+          : '';
+    if (!spreadsheetId || !spreadsheetUrlRaw) {
+      throw new Error(
+        'Apps Script thiếu spreadsheetId/spreadsheetUrl trong response',
+      );
+    }
+    return {
+      spreadsheetId,
+      spreadsheetUrl: spreadsheetUrlRaw,
+    };
+  }
+
+  async createSheetViaAppsScript(title: string): Promise<{
+    spreadsheetId: string;
+    spreadsheetUrl: string;
+  }> {
+    const cfg = this.resolveAppsScriptConfig();
+    if (!cfg) {
+      throw new ServiceUnavailableException(
+        'Thiếu GOOGLE_SHEETS_APPS_SCRIPT_URL hoặc GOOGLE_SHEETS_APPS_SCRIPT_SECRET.',
+      );
+    }
+    return this.postAppsScriptCreateSheet(title, cfg);
+  }
+
+  async createTestSheetViaAppsScript(
+    brideName: string,
+    groomName: string,
+  ): Promise<GoogleSheetsAuthTestResponse> {
+    const bride = brideName.trim();
+    const groom = groomName.trim();
+    if (!bride || !groom) {
+      throw new BadRequestException(
+        'Thiếu brideName hoặc groomName (query string, không rỗng).',
+      );
+    }
+
+    const cfg = this.requireAppsScriptConfig();
+    const title = this.buildSpreadsheetTitle(bride, groom);
+    try {
+      const created = await this.postAppsScriptCreateSheet(title, cfg);
+      return {
+        ok: true,
+        credentialSource: 'apps-script',
+        clientEmail: 'apps-script-webhook',
+        spreadsheetId: created.spreadsheetId,
+        spreadsheetUrl: created.spreadsheetUrl,
+      };
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new BadGatewayException(
+        `Không tạo được Sheet test qua Apps Script: ${msg}`,
       );
     }
   }
