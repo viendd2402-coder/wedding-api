@@ -131,6 +131,13 @@ export class PaymentInvitationDetailsEntity {
   @Column({ type: 'jsonb', nullable: true })
   album?: PaymentInvitationAlbumItem[] | null;
 
+  /**
+   * Google Sheet (2 tab: xác nhận tham dự + lời chúc), tạo sau khi thanh toán thành công
+   * khi đã cấu hình service account (file `GOOGLE_SHEETS_SERVICE_ACCOUNT_JSON_PATH` hoặc env JSON).
+   */
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  guestBookSpreadsheetId?: string | null;
+
   @CreateDateColumn({ name: 'createdAt', type: 'timestamp' })
   createdAt!: Date;
 

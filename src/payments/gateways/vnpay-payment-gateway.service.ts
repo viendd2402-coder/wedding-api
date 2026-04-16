@@ -22,6 +22,7 @@ import {
 import { getPaymentPlanBySlug } from '../payment-plans';
 import { computeCheckoutUrlExpireDate } from '../utils/checkout-url-expire.util';
 import { generatePaymentOrderCode } from '../utils/payment-order-code.util';
+import { GoogleSheetsService } from '../../google-sheets/google-sheets.service';
 
 @Injectable()
 export class VnpayPaymentGatewayService implements IPaymentGateway {
@@ -34,6 +35,7 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
     private readonly invitationDetailsRepository: Repository<PaymentInvitationDetailsEntity>,
     private readonly configService: ConfigService,
     private readonly vnpayService: VnpayService,
+    private readonly googleSheetsService: GoogleSheetsService,
   ) {}
 
   async createPaymentLink(
@@ -381,6 +383,8 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
       }
       throw e;
     }
+
+    this.googleSheetsService.scheduleGuestBookSpreadsheet(details);
 
     payment.invitationDraft = null;
     await this.paymentRepository.save(payment);

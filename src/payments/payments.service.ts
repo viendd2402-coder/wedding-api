@@ -35,6 +35,7 @@ import {
   getInvitationTemplateBySlug,
   invitationTemplateDisplayName,
 } from './invitation-templates.catalog';
+import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { generatePaymentOrderCode } from './utils/payment-order-code.util';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
 
@@ -80,6 +81,7 @@ export class PaymentsService {
     @Inject(ACTIVE_PAYMENT_GATEWAY)
     private readonly activePaymentGateway: IPaymentGateway,
     private readonly s3Service: S3Service,
+    private readonly googleSheetsService: GoogleSheetsService,
   ) {}
 
   createPaymentLink(
@@ -140,57 +142,74 @@ export class PaymentsService {
       album = items.length > 0 ? items : null;
     }
 
-    return this.paymentRepository.manager.transaction(
-      async (manager): Promise<CreateFreeInvitationResponse> => {
-        const payment = manager.create(PaymentEntity, {
-          userId,
-          amount: 0,
-          currency: 'VND',
-          description: `${templateDef.templateName} template`,
-          planSlug: inv.templateSlug.trim().toLowerCase(),
-          provider: PaymentProvider.FREE,
-          providerOrderCode,
-          checkoutUrl: null,
-          checkoutUrlExpireDate: null,
-          status: PaymentStatus.PAID,
-          paidAt: new Date(),
-          rawWebhook: { source: 'free_invitation' },
-          invitationDraft: null,
-        });
-        const savedPayment = await manager.save(PaymentEntity, payment);
+    const { response, savedDetails } =
+      await this.paymentRepository.manager.transaction(
+        async (
+          manager,
+        ): Promise<{
+          response: CreateFreeInvitationResponse;
+          savedDetails: PaymentInvitationDetailsEntity;
+        }> => {
+          const payment = manager.create(PaymentEntity, {
+            userId,
+            amount: 0,
+            currency: 'VND',
+            description: `${templateDef.templateName} template`,
+            planSlug: inv.templateSlug.trim().toLowerCase(),
+            provider: PaymentProvider.FREE,
+            providerOrderCode,
+            checkoutUrl: null,
+            checkoutUrlExpireDate: null,
+            status: PaymentStatus.PAID,
+            paidAt: new Date(),
+            rawWebhook: { source: 'free_invitation' },
+            invitationDraft: null,
+          });
+          const savedPayment = await manager.save(PaymentEntity, payment);
 
-        const details = manager.create(PaymentInvitationDetailsEntity, {
-          payment: savedPayment,
-          code,
-          templateSlug: inv.templateSlug.trim().toLowerCase().slice(0, 120),
-          version: Math.max(1, Math.floor(inv.version)),
-          brideName: inv.brideName.trim().slice(0, 255),
-          groomName: inv.groomName.trim().slice(0, 255),
-          weddingDate,
-          venue: inv.venue.trim().slice(0, 500),
-          album,
-        });
+          const details = manager.create(PaymentInvitationDetailsEntity, {
+            payment: savedPayment,
+            code,
+            templateSlug: inv.templateSlug.trim().toLowerCase().slice(0, 120),
+            version: Math.max(1, Math.floor(inv.version)),
+            brideName: inv.brideName.trim().slice(0, 255),
+            groomName: inv.groomName.trim().slice(0, 255),
+            weddingDate,
+            venue: inv.venue.trim().slice(0, 500),
+            album,
+          });
 
-        try {
-          await manager.save(PaymentInvitationDetailsEntity, details);
-        } catch (e) {
-          if (this.isPgUniqueViolation(e)) {
-            throw new BadRequestException({
-              message: 'Trùng mã thiệp, vui lòng thử lại.',
-              messageCode: 'MSG_FREE_INVITE_CODE_COLLISION',
-            });
+          let savedDetails: PaymentInvitationDetailsEntity;
+          try {
+            savedDetails = await manager.save(
+              PaymentInvitationDetailsEntity,
+              details,
+            );
+          } catch (e) {
+            if (this.isPgUniqueViolation(e)) {
+              throw new BadRequestException({
+                message: 'Trùng mã thiệp, vui lòng thử lại.',
+                messageCode: 'MSG_FREE_INVITE_CODE_COLLISION',
+              });
+            }
+            throw e;
           }
-          throw e;
-        }
 
-        return {
-          paymentId: savedPayment.id,
-          orderCode: providerOrderCode,
-          inviteCode: code,
-          status: PaymentStatus.PAID,
-        };
-      },
-    );
+          return {
+            response: {
+              paymentId: savedPayment.id,
+              orderCode: providerOrderCode,
+              inviteCode: code,
+              status: PaymentStatus.PAID,
+            },
+            savedDetails,
+          };
+        },
+      );
+
+    this.googleSheetsService.scheduleGuestBookSpreadsheet(savedDetails);
+
+    return response;
   }
 
   private isPgUniqueViolation(err: unknown): boolean {

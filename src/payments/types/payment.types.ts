@@ -19,6 +19,8 @@ export type UserPaymentListItemResponse = {
   eventDateLabel: string | null;
   venueDetail: string | null;
   invitePath: string | null;
+  /** Link chỉnh sửa Google Sheet (khách mời / lời chúc), nếu đã tạo. */
+  guestBookSpreadsheetUrl: string | null;
   checkoutUrl: string | null;
   checkoutUrlExpireDate: string | null;
   templateSlug: string | null;

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { GoogleSheetsModule } from '../google-sheets/google-sheets.module';
 import { PayosModule } from '../payos/payos.module';
 import { StorageModule } from '../storage/storage.module';
 import { VnpayModule } from '../vnpay/vnpay.module';
@@ -24,6 +25,7 @@ import type { IPaymentGateway } from './providers/payment-gateway.interface';
   imports: [
     TypeOrmModule.forFeature([PaymentEntity, PaymentInvitationDetailsEntity]),
     StorageModule,
+    GoogleSheetsModule,
     PayosModule,
     VnpayModule,
     AuthModule,

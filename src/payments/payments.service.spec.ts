@@ -5,6 +5,7 @@ import { PaymentEntity, PaymentStatus } from './entities/payment.entity';
 import { ACTIVE_PAYMENT_GATEWAY } from './providers/payment-gateway.tokens';
 import { S3Service } from '../storage/s3.service';
 import { INVITATION_TEMPLATES } from './invitation-templates.catalog';
+import { GoogleSheetsService } from '../google-sheets/google-sheets.service';
 import { PaymentsService } from './payments.service';
 import type { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 
@@ -44,6 +45,10 @@ describe('PaymentsService', () => {
           useValue: {
             resolvePublicObjectUrl: jest.fn().mockReturnValue(null),
           },
+        },
+        {
+          provide: GoogleSheetsService,
+          useValue: { scheduleGuestBookSpreadsheet: jest.fn() },
         },
       ],
     }).compile();

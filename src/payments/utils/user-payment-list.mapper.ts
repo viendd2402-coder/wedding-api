@@ -210,6 +210,11 @@ export function mapPaymentToUserListItem(
   const weddingDate = coerceToDate(inv?.weddingDate ?? null);
   const listUpdatedAt = inv?.rowUpdatedAt ?? payment.updatedAt;
 
+  const sheetId = details?.guestBookSpreadsheetId?.trim();
+  const guestBookSpreadsheetUrl = sheetId
+    ? `https://docs.google.com/spreadsheets/d/${sheetId}/edit`
+    : null;
+
   return {
     id: payment.id,
     paymentStatus: payment.status,
@@ -224,6 +229,7 @@ export function mapPaymentToUserListItem(
     eventDateLabel: formatEventDateLabel(weddingDate),
     venueDetail: inv?.venueRaw ?? null,
     invitePath: inv?.publicCode ? `/invite/${inv.publicCode}` : null,
+    guestBookSpreadsheetUrl,
     checkoutUrl: payment.checkoutUrl?.trim() || null,
     checkoutUrlExpireDate:
       payment.checkoutUrlExpireDate instanceof Date &&
