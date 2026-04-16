@@ -19,6 +19,8 @@ import {
   AppendGuestBookDto,
   GuestBookAppendTab,
 } from './dto/append-guest-book.dto';
+import { GoogleSheetsAppsScriptQueueService } from './queues/google-sheets-apps-script-queue.service';
+import type { GuestBookAppendJobData } from './queues/google-sheets-apps-script.queue';
 import type {
   GoogleSheetsAppendResponse,
   GoogleSheetsAuthTestResponse,
@@ -34,6 +36,7 @@ export class GoogleSheetsService {
     private readonly configService: ConfigService,
     @InjectRepository(PaymentInvitationDetailsEntity)
     private readonly invitationDetailsRepository: Repository<PaymentInvitationDetailsEntity>,
+    private readonly appsScriptQueueService: GoogleSheetsAppsScriptQueueService,
   ) {}
 
   /**
@@ -275,7 +278,7 @@ export class GoogleSheetsService {
   async appendGuestBookRow(
     dto: AppendGuestBookDto,
   ): Promise<GoogleSheetsAppendResponse> {
-    const cfg = this.requireAppsScriptConfig();
+    this.requireAppsScriptConfig();
     const id = dto.spreadsheetId.trim();
     if (!id) {
       throw new BadRequestException('spreadsheetId không hợp lệ');
@@ -303,19 +306,37 @@ export class GoogleSheetsService {
     }
 
     try {
-      const record = await this.callAppsScript(cfg, {
-        action: 'append',
+      await this.appsScriptQueueService.enqueueGuestBookAppend({
         spreadsheetId: id,
         tab: dto.tab,
         row,
       });
-      if (record.ok !== true) {
-        throw new Error('Apps Script không xác nhận append');
-      }
       return { ok: true };
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      throw new BadGatewayException(`Không append được vào Sheet: ${msg}`);
+      throw new ServiceUnavailableException(
+        `Không xếp hàng được append vào Sheet: ${msg}`,
+      );
+    }
+  }
+
+  /**
+   * Worker BullMQ: gọi Apps Script append (có retry theo cấu hình job).
+   */
+  async processQueuedGuestBookAppend(data: GuestBookAppendJobData): Promise<void> {
+    const cfg = this.requireAppsScriptConfig();
+    const id = data.spreadsheetId.trim();
+    if (!id) {
+      throw new Error('spreadsheetId rỗng trong job append');
+    }
+    const record = await this.callAppsScript(cfg, {
+      action: 'append',
+      spreadsheetId: id,
+      tab: data.tab,
+      row: data.row,
+    });
+    if (record.ok !== true) {
+      throw new Error('Apps Script không xác nhận append');
     }
   }
 
