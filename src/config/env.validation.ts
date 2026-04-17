@@ -36,6 +36,8 @@ type AppEnv = {
   GOOGLE_SHEETS_EDITOR_EMAIL: string;
   GOOGLE_SHEETS_APPS_SCRIPT_URL: string;
   GOOGLE_SHEETS_APPS_SCRIPT_SECRET: string;
+  /** Apex domain cho URL thiệp dạng `https://{sub}.{root}/`, ví dụ `lumierewedding.vn`. Tùy chọn. */
+  INVITE_ROOT_DOMAIN: string;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -282,6 +284,12 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? googleSheetsAppsScriptSecretInput.trim()
       : '';
 
+  const inviteRootDomainInput = config.INVITE_ROOT_DOMAIN;
+  const inviteRootDomain =
+    typeof inviteRootDomainInput === 'string'
+      ? inviteRootDomainInput.trim().toLowerCase()
+      : '';
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -320,5 +328,6 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     GOOGLE_SHEETS_EDITOR_EMAIL: googleSheetsEditorEmail,
     GOOGLE_SHEETS_APPS_SCRIPT_URL: googleSheetsAppsScriptUrl,
     GOOGLE_SHEETS_APPS_SCRIPT_SECRET: googleSheetsAppsScriptSecret,
+    INVITE_ROOT_DOMAIN: inviteRootDomain,
   };
 }

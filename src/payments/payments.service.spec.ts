@@ -8,6 +8,7 @@ import { INVITATION_TEMPLATES } from './invitation-templates.catalog';
 import { PaymentsService } from './payments.service';
 import type { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import { PostPaymentQueueService } from './queues/post-payment-queue.service';
+import { PaymentInvitationDetailsService } from './services/payment-invitation-details.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -49,6 +50,12 @@ describe('PaymentsService', () => {
         {
           provide: PostPaymentQueueService,
           useValue: { enqueueProvisionInvitationResources: jest.fn() },
+        },
+        {
+          provide: PaymentInvitationDetailsService,
+          useValue: {
+            assertSubdomainOptionalForCheckout: jest.fn().mockResolvedValue(null),
+          },
         },
       ],
     }).compile();

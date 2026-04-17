@@ -25,6 +25,7 @@ import { CreatePaymentLinkDto } from './dto/create-payment-link.dto';
 import {
   CreateFreeInvitationResponse,
   CreatePaymentLinkResponse,
+  InviteSubdomainAvailabilityResponse,
   PaymentDetailResponse,
   PaymentListResponse,
   PopularInvitationTemplatesResponse,
@@ -38,6 +39,8 @@ import {
 import { generatePaymentOrderCode } from './utils/payment-order-code.util';
 import { mapPaymentToUserListItem } from './utils/user-payment-list.mapper';
 import { PostPaymentQueueService } from './queues/post-payment-queue.service';
+import { PaymentInvitationDetailsService } from './services/payment-invitation-details.service';
+import { tryNormalizeInviteSubdomain } from './utils/invite-subdomain.util';
 
 function coerceInvitationWeddingDate(
   value: Date | string | null | undefined,
@@ -82,6 +85,7 @@ export class PaymentsService {
     private readonly activePaymentGateway: IPaymentGateway,
     private readonly s3Service: S3Service,
     private readonly postPaymentQueueService: PostPaymentQueueService,
+    private readonly paymentInvitationDetailsService: PaymentInvitationDetailsService,
   ) {}
 
   createPaymentLink(
@@ -101,6 +105,11 @@ export class PaymentsService {
   ): Promise<CreateFreeInvitationResponse> {
     const inv = dto.invitation;
     const templateDef = this.getValidatedFreeTemplate(inv.templateSlug);
+
+    const inviteSubdomain =
+      await this.paymentInvitationDetailsService.assertSubdomainOptionalForCheckout(
+        inv.subdomain,
+      );
 
     const providerOrderCode = String(generatePaymentOrderCode());
     const code = randomBytes(16).toString('hex');
@@ -135,6 +144,7 @@ export class PaymentsService {
           const details = manager.create(PaymentInvitationDetailsEntity, {
             payment: savedPayment,
             code,
+            subdomain: inviteSubdomain ?? null,
             templateSlug: inv.templateSlug.trim().toLowerCase().slice(0, 120),
             version: Math.max(1, Math.floor(inv.version)),
             brideName: inv.brideName.trim().slice(0, 255),
@@ -165,6 +175,7 @@ export class PaymentsService {
               paymentId: savedPayment.id,
               orderCode: providerOrderCode,
               inviteCode: code,
+              inviteSubdomain,
               status: PaymentStatus.PAID,
             },
             savedDetails,
@@ -345,6 +356,49 @@ export class PaymentsService {
       });
     }
 
+    return this.mapInvitationDetailsToPublicResponse(details);
+  }
+
+  async getPublicInvitationDetailsBySubdomain(
+    rawSubdomain: string,
+  ): Promise<PublicInvitationDetailsByCodeResponse> {
+    const subdomain = tryNormalizeInviteSubdomain(rawSubdomain);
+    if (!subdomain) {
+      throw new BadRequestException({
+        message: 'Subdomain không hợp lệ.',
+        messageCode: 'MSG_INVITE_SUBDOMAIN_INVALID',
+      });
+    }
+
+    const details = await this.invitationDetailsRepository.findOne({
+      where: { subdomain },
+    });
+    if (!details) {
+      throw new NotFoundException({
+        message: 'Không tìm thấy thiệp với subdomain này',
+        messageCode: 'MSG_INVITE_NOT_FOUND',
+      });
+    }
+
+    return this.mapInvitationDetailsToPublicResponse(details);
+  }
+
+  async getInviteSubdomainAvailability(
+    raw: string,
+  ): Promise<InviteSubdomainAvailabilityResponse> {
+    const subdomain = tryNormalizeInviteSubdomain(raw);
+    if (!subdomain) {
+      return { available: false };
+    }
+    const exists = await this.invitationDetailsRepository.exist({
+      where: { subdomain },
+    });
+    return { available: !exists };
+  }
+
+  private mapInvitationDetailsToPublicResponse(
+    details: PaymentInvitationDetailsEntity,
+  ): PublicInvitationDetailsByCodeResponse {
     const albumRaw = details.album ?? [];
     const albumSorted = [...albumRaw].sort(
       (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
@@ -352,6 +406,7 @@ export class PaymentsService {
 
     return {
       code: details.code,
+      subdomain: details.subdomain?.trim() || null,
       templateSlug: details.templateSlug ?? null,
       version: details.version,
       brideName: details.brideName,

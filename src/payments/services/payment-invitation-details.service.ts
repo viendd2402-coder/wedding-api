@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { CreatePaymentLinkDto } from '../dto/create-payment-link.dto';
@@ -9,6 +9,7 @@ import {
 } from '../entities/payment-invitation-details.entity';
 import { PaymentEntity } from '../entities/payment.entity';
 import { PostPaymentQueueService } from '../queues/post-payment-queue.service';
+import { tryNormalizeInviteSubdomain } from '../utils/invite-subdomain.util';
 
 @Injectable()
 export class PaymentInvitationDetailsService {
@@ -24,6 +25,7 @@ export class PaymentInvitationDetailsService {
 
   buildInvitationDraftFromDto(dto: CreatePaymentLinkDto): Record<string, unknown> {
     const inv = dto.invitation!;
+    const subdomain = tryNormalizeInviteSubdomain(inv.subdomain);
     return {
       templateSlug: inv.templateSlug ?? null,
       version: inv.version ?? 1,
@@ -38,7 +40,41 @@ export class PaymentInvitationDetailsService {
             sortOrder: a.sortOrder ?? null,
           }))
         : null,
+      ...(subdomain ? { subdomain } : {}),
     };
+  }
+
+  /**
+   * Gọi trước khi tạo link thanh toán / thiệp miễn phí: chuẩn hóa và kiểm tra subdomain chưa gán.
+   */
+  async assertSubdomainOptionalForCheckout(raw: unknown): Promise<string | null> {
+    if (raw == null || (typeof raw === 'string' && !raw.trim())) {
+      return null;
+    }
+    if (typeof raw !== 'string') {
+      throw new BadRequestException({
+        message: 'Subdomain thiệp không hợp lệ.',
+        messageCode: 'MSG_INVITE_SUBDOMAIN_INVALID',
+      });
+    }
+    const normalized = tryNormalizeInviteSubdomain(raw);
+    if (!normalized) {
+      throw new BadRequestException({
+        message:
+          'Subdomain chỉ gồm chữ thường, số, gạch giữa (1–63 ký tự), không trùng từ khóa hệ thống (www, api, …).',
+        messageCode: 'MSG_INVITE_SUBDOMAIN_INVALID',
+      });
+    }
+    const exists = await this.invitationDetailsRepository.exist({
+      where: { subdomain: normalized },
+    });
+    if (exists) {
+      throw new BadRequestException({
+        message: 'Subdomain này đã được đăng ký.',
+        messageCode: 'MSG_INVITE_SUBDOMAIN_TAKEN',
+      });
+    }
+    return normalized;
   }
 
   async persistInvitationDetailsAfterPaidSafe(
@@ -81,7 +117,20 @@ export class PaymentInvitationDetailsService {
     const version = this.resolveVersionFromDraft(draft);
     const album = this.extractAlbumFromDraft(draft);
 
-    const details = this.invitationDetailsRepository.create({
+    let resolvedSubdomain = tryNormalizeInviteSubdomain(draft.subdomain);
+    if (resolvedSubdomain) {
+      const taken = await this.invitationDetailsRepository.exist({
+        where: { subdomain: resolvedSubdomain },
+      });
+      if (taken) {
+        this.logger.warn(
+          `Bỏ subdomain "${resolvedSubdomain}" khi lưu thiệp (đã tồn tại) paymentId=${paymentId}`,
+        );
+        resolvedSubdomain = null;
+      }
+    }
+
+    const baseFields = {
       payment,
       code,
       templateSlug:
@@ -94,15 +143,38 @@ export class PaymentInvitationDetailsService {
       weddingDate,
       venue: typeof draft.venue === 'string' ? draft.venue.slice(0, 500) : null,
       album,
+    };
+
+    let details = this.invitationDetailsRepository.create({
+      ...baseFields,
+      subdomain: resolvedSubdomain ?? null,
     });
 
     try {
       await this.invitationDetailsRepository.save(details);
     } catch (e) {
-      if (this.isPgUniqueViolation(e)) {
+      if (!this.isPgUniqueViolation(e)) {
+        throw e;
+      }
+      if (resolvedSubdomain) {
+        this.logger.warn(
+          `Lưu thiệp trùng unique (subdomain?), thử lại không subdomain paymentId=${paymentId}`,
+        );
+        details = this.invitationDetailsRepository.create({
+          ...baseFields,
+          subdomain: null,
+        });
+        try {
+          await this.invitationDetailsRepository.save(details);
+        } catch (e2) {
+          if (this.isPgUniqueViolation(e2)) {
+            return;
+          }
+          throw e2;
+        }
+      } else {
         return;
       }
-      throw e;
     }
 
     await this.postPaymentQueueService.enqueueProvisionInvitationResources(details.id);

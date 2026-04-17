@@ -36,6 +36,9 @@ export class VnpayPaymentGatewayService implements IPaymentGateway {
     dto: CreatePaymentLinkDto,
     clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
+    await this.paymentInvitationDetailsService.assertSubdomainOptionalForCheckout(
+      dto.invitation.subdomain,
+    );
     const plan = getPaymentPlanBySlug(dto.invitation?.templateSlug);
     const providerOrderCode = String(generatePaymentOrderCode());
     const publicBase = this.getPublicApiBaseOrThrow();

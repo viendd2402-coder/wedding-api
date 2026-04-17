@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   IsArray,
   IsDateString,
@@ -66,4 +66,13 @@ export class CreatePaymentInvitationDto {
   @ValidateNested({ each: true })
   @Type(() => PaymentInvitationAlbumItemDto)
   album?: PaymentInvitationAlbumItemDto[] | null;
+
+  /** Tùy chọn: nhãn subdomain (chữ thường, số, gạch giữa). Kiểm tra trùng khi tạo link / thiệp miễn phí. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(63)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim().toLowerCase() : value,
+  )
+  subdomain?: string;
 }

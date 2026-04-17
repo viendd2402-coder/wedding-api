@@ -20,6 +20,7 @@ describe('PayosPaymentGatewayService', () => {
   let paymentInvitationDetailsService: {
     buildInvitationDraftFromDto: jest.Mock;
     persistInvitationDetailsAfterPaidSafe: jest.Mock;
+    assertSubdomainOptionalForCheckout: jest.Mock;
   };
 
   beforeEach(async () => {
@@ -34,6 +35,7 @@ describe('PayosPaymentGatewayService', () => {
     paymentInvitationDetailsService = {
       buildInvitationDraftFromDto: jest.fn(),
       persistInvitationDetailsAfterPaidSafe: jest.fn(),
+      assertSubdomainOptionalForCheckout: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({

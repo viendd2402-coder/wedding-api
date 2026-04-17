@@ -110,6 +110,10 @@ export class PaymentInvitationDetailsEntity {
   @Column({ type: 'varchar', length: 64, unique: true })
   code!: string;
 
+  /** Nhãn subdomain công khai, ví dụ `vienngan` → `vienngan.lumierewedding.vn` (cần DNS/TLS phía hạ tầng). */
+  @Column({ type: 'varchar', length: 63, nullable: true, unique: true })
+  subdomain?: string | null;
+
   @Column({ type: 'varchar', length: 120, nullable: true })
   templateSlug?: string | null;
 

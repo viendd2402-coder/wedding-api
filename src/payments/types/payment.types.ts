@@ -19,6 +19,8 @@ export type UserPaymentListItemResponse = {
   eventDateLabel: string | null;
   venueDetail: string | null;
   invitePath: string | null;
+  /** Nhãn subdomain đã đăng ký (nếu có), ví dụ `vienngan`. */
+  inviteSubdomain: string | null;
   /** Link chỉnh sửa Google Sheet (khách mời / lời chúc), nếu đã tạo. */
   guestBookSpreadsheetUrl: string | null;
   checkoutUrl: string | null;
@@ -38,6 +40,8 @@ export type CreateFreeInvitationResponse = {
   paymentId: number;
   orderCode: string;
   inviteCode: string;
+  /** Subdomain đã gán khi tạo (nếu có). */
+  inviteSubdomain: string | null;
   status: PaymentStatus;
 };
 
@@ -76,6 +80,8 @@ export type PublicInvitationAlbumItemResponse = {
 
 export type PublicInvitationDetailsByCodeResponse = {
   code: string;
+  /** Subdomain công khai (nếu đã cấu hình). */
+  subdomain: string | null;
   templateSlug: string | null;
   version: number;
   brideName: string;
@@ -96,4 +102,8 @@ export type PopularInvitationTemplateItem = {
 
 export type PopularInvitationTemplatesResponse = {
   items: PopularInvitationTemplateItem[];
+};
+
+export type InviteSubdomainAvailabilityResponse = {
+  available: boolean;
 };

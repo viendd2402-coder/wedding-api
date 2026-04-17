@@ -9,6 +9,7 @@ import type {
   UserPaymentProductType,
 } from '../types/payment.types';
 import { invitationTemplateDisplayName } from '../invitation-templates.catalog';
+import { tryNormalizeInviteSubdomain } from './invite-subdomain.util';
 
 function parseVenueLines(venue: string | null | undefined): {
   city: string | null;
@@ -98,6 +99,7 @@ type InvitationSnapshot = {
   venueRaw: string | null;
   album: PaymentInvitationAlbumItem[] | null;
   publicCode: string | null;
+  publicSubdomain: string | null;
   rowUpdatedAt: Date;
 };
 
@@ -114,6 +116,7 @@ function buildInvitationSnapshot(
       venueRaw: details.venue?.trim() || null,
       album: details.album ?? null,
       publicCode: details.code?.trim() || null,
+      publicSubdomain: details.subdomain?.trim() || null,
       rowUpdatedAt: coerceToDate(details.updatedAt) ?? payment.updatedAt,
     };
   }
@@ -142,6 +145,7 @@ function buildInvitationSnapshot(
     venueRaw,
     album: parseDraftAlbum(d.album),
     publicCode: null,
+    publicSubdomain: tryNormalizeInviteSubdomain(d.subdomain),
     rowUpdatedAt: payment.updatedAt,
   };
 }
@@ -229,6 +233,7 @@ export function mapPaymentToUserListItem(
     eventDateLabel: formatEventDateLabel(weddingDate),
     venueDetail: inv?.venueRaw ?? null,
     invitePath: inv?.publicCode ? `/invite/${inv.publicCode}` : null,
+    inviteSubdomain: inv?.publicSubdomain ?? null,
     guestBookSpreadsheetUrl,
     checkoutUrl: payment.checkoutUrl?.trim() || null,
     checkoutUrlExpireDate:

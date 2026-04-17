@@ -10,6 +10,7 @@ import {
   GUEST_BOOK_WISHES_TAB_TITLE,
 } from '../../google-sheets/guest-book-sheet.constants';
 import { GoogleSheetsService } from '../../google-sheets/google-sheets.service';
+import { buildInviteSubdomainPublicUrl } from '../utils/invite-subdomain.util';
 import { MailService } from '../../mail/mail.service';
 import { PaymentInvitationDetailsEntity } from '../entities/payment-invitation-details.entity';
 import {
@@ -89,8 +90,7 @@ export class PostPaymentProcessor extends WorkerHost {
       return;
     }
 
-    const frontendBase = this.getFrontendBaseUrl();
-    const invitationUrl = `${frontendBase}/invite/${encodeURIComponent(details.code)}`;
+    const invitationUrl = this.buildPublicInvitationUrl(details);
     const rsvpTrackingUrl = this.buildSheetTabUrl(
       sheet.spreadsheetUrl,
       GUEST_BOOK_RSVP_TAB_TITLE,
@@ -151,5 +151,18 @@ export class PostPaymentProcessor extends WorkerHost {
       .get<string>('FRONTEND_URL', 'http://localhost:3000')
       .trim()
       .replace(/\/$/, '');
+  }
+
+  private buildPublicInvitationUrl(details: PaymentInvitationDetailsEntity): string {
+    const root = this.configService
+      .get<string>('INVITE_SUBDOMAIN_ROOT_DOMAIN', '')
+      ?.trim();
+    const sub = details.subdomain?.trim();
+    const fromSub = buildInviteSubdomainPublicUrl(sub, root ?? '', 'https');
+    if (fromSub) {
+      return fromSub;
+    }
+    const frontendBase = this.getFrontendBaseUrl();
+    return `${frontendBase}/invite/${encodeURIComponent(details.code)}`;
   }
 }

@@ -36,6 +36,9 @@ export class PayosPaymentGatewayService implements IPaymentGateway {
     dto: CreatePaymentLinkDto,
     _clientIp: string,
   ): Promise<CreatePaymentLinkResponse> {
+    await this.paymentInvitationDetailsService.assertSubdomainOptionalForCheckout(
+      dto.invitation.subdomain,
+    );
     const plan = getPaymentPlanBySlug(dto.invitation.templateSlug);
     const frontendBase = this.getFrontendBaseUrl();
     const orderCode = this.generatePayosOrderCode();
