@@ -1,6 +1,6 @@
-import { Transform, Type } from 'class-transformer';
+import { Transform } from 'class-transformer';
 import {
-  IsArray,
+  Allow,
   IsDateString,
   IsIn,
   IsInt,
@@ -9,26 +9,8 @@ import {
   IsString,
   MaxLength,
   Min,
-  ValidateNested,
 } from 'class-validator';
 import { INVITATION_TEMPLATE_SLUGS } from '../invitation-templates.catalog';
-
-export class PaymentInvitationAlbumItemDto {
-  @IsString()
-  @IsNotEmpty()
-  @MaxLength(500)
-  storageKey!: string;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(500)
-  caption?: string | null;
-
-  @IsOptional()
-  @IsInt()
-  @Min(0)
-  sortOrder?: number | null;
-}
 
 export class CreatePaymentInvitationDto {
   @IsNotEmpty()
@@ -62,12 +44,19 @@ export class CreatePaymentInvitationDto {
   venue!: string;
 
   @IsOptional()
-  @IsArray()
-  @ValidateNested({ each: true })
-  @Type(() => PaymentInvitationAlbumItemDto)
-  album?: PaymentInvitationAlbumItemDto[] | null;
+  @Allow()
+  details?: unknown;
 
-  /** Tùy chọn: nhãn subdomain (chữ thường, số, gạch giữa). Kiểm tra trùng khi tạo link / thiệp miễn phí. */
+  /** Key S3 hoặc URL ảnh đại diện. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  @Transform(({ value }) =>
+    typeof value === 'string' ? value.trim() : value,
+  )
+  thumbnailImage?: string | null;
+
+  /** Tùy chọn: nhãn subdomain (chữ thường, số, gạch giữa). Kiểm tra trùng khi tạo link / thiệc miễn phí. */
   @IsOptional()
   @IsString()
   @MaxLength(63)

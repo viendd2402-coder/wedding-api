@@ -9,10 +9,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { S3Service } from '../storage/s3.service';
-import {
-  PaymentInvitationAlbumItem,
-  PaymentInvitationDetailsEntity,
-} from './entities/payment-invitation-details.entity';
+import { PaymentInvitationDetailsEntity } from './entities/payment-invitation-details.entity';
 import {
   PaymentEntity,
   PaymentProvider,
@@ -114,7 +111,14 @@ export class PaymentsService {
     const providerOrderCode = String(generatePaymentOrderCode());
     const code = randomBytes(16).toString('hex');
     const weddingDate = this.parseWeddingDate(inv.weddingDate);
-    const album = this.normalizeInvitationAlbum(inv.album);
+    const detailsJson =
+      inv.details !== undefined && inv.details !== null
+        ? (JSON.parse(JSON.stringify(inv.details)) as unknown)
+        : null;
+    const thumbnailImage =
+      typeof inv.thumbnailImage === 'string' && inv.thumbnailImage.trim()
+        ? inv.thumbnailImage.trim().slice(0, 2000)
+        : null;
 
     const { response, savedDetails } =
       await this.paymentRepository.manager.transaction(
@@ -151,7 +155,8 @@ export class PaymentsService {
             groomName: inv.groomName.trim().slice(0, 255),
             weddingDate,
             venue: inv.venue.trim().slice(0, 500),
-            album,
+            details: detailsJson,
+            thumbnailImage,
           });
 
           let savedDetails: PaymentInvitationDetailsEntity;
@@ -220,35 +225,6 @@ export class PaymentsService {
     }
     const parsed = new Date(rawWeddingDate.trim());
     return Number.isNaN(parsed.getTime()) ? null : parsed;
-  }
-
-  private normalizeInvitationAlbum(
-    albumInput?: Array<{
-      storageKey: string;
-      caption?: string | null;
-      sortOrder?: number | null;
-    }> | null,
-  ): PaymentInvitationAlbumItem[] | null {
-    if (!albumInput?.length) {
-      return null;
-    }
-    const items = albumInput
-      .map((item): PaymentInvitationAlbumItem | null => {
-        const storageKey = item.storageKey?.trim() ?? '';
-        if (!storageKey) {
-          return null;
-        }
-        return {
-          storageKey: storageKey.slice(0, 500),
-          caption:
-            typeof item.caption === 'string' ? item.caption.slice(0, 500) : null,
-          ...(typeof item.sortOrder === 'number' && Number.isFinite(item.sortOrder)
-            ? { sortOrder: Math.max(0, Math.floor(item.sortOrder)) }
-            : {}),
-        };
-      })
-      .filter((x): x is PaymentInvitationAlbumItem => x !== null);
-    return items.length > 0 ? items : null;
   }
 
   async getPaymentById(
@@ -399,11 +375,6 @@ export class PaymentsService {
   private mapInvitationDetailsToPublicResponse(
     details: PaymentInvitationDetailsEntity,
   ): PublicInvitationDetailsByCodeResponse {
-    const albumRaw = details.album ?? [];
-    const albumSorted = [...albumRaw].sort(
-      (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
-    );
-
     return {
       code: details.code,
       subdomain: details.subdomain?.trim() || null,
@@ -413,17 +384,24 @@ export class PaymentsService {
       groomName: details.groomName,
       weddingDate: invitationWeddingDateIso(details.weddingDate),
       venue: details.venue ?? null,
-      album: albumSorted.map((item) => ({
-        url: this.s3Service.resolvePublicObjectUrl(item.storageKey),
-        caption: item.caption ?? null,
-        sortOrder:
-          typeof item.sortOrder === 'number' && Number.isFinite(item.sortOrder)
-            ? item.sortOrder
-            : null,
-      })),
+      details: details.details ?? null,
+      thumbnailImage: this.resolveInvitationImagePublicUrl(details.thumbnailImage),
       createdAt: details.createdAt.toISOString(),
       updatedAt: details.updatedAt.toISOString(),
     };
+  }
+
+  private resolveInvitationImagePublicUrl(
+    raw: string | null | undefined,
+  ): string | null {
+    const s = raw?.trim();
+    if (!s) {
+      return null;
+    }
+    if (/^https?:\/\//i.test(s)) {
+      return s;
+    }
+    return this.s3Service.resolvePublicObjectUrl(s);
   }
 
   async listPaymentsByUser(

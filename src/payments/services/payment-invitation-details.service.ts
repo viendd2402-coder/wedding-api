@@ -3,10 +3,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { QueryFailedError, Repository } from 'typeorm';
 import { CreatePaymentLinkDto } from '../dto/create-payment-link.dto';
-import {
-  PaymentInvitationAlbumItem,
-  PaymentInvitationDetailsEntity,
-} from '../entities/payment-invitation-details.entity';
+import { PaymentInvitationDetailsEntity } from '../entities/payment-invitation-details.entity';
 import { PaymentEntity } from '../entities/payment.entity';
 import { PostPaymentQueueService } from '../queues/post-payment-queue.service';
 import { tryNormalizeInviteSubdomain } from '../utils/invite-subdomain.util';
@@ -33,13 +30,14 @@ export class PaymentInvitationDetailsService {
       groomName: inv.groomName,
       weddingDate: inv.weddingDate ?? null,
       venue: inv.venue ?? null,
-      album: inv.album?.length
-        ? inv.album.map((a) => ({
-            storageKey: a.storageKey,
-            caption: a.caption ?? null,
-            sortOrder: a.sortOrder ?? null,
-          }))
-        : null,
+      details:
+        inv.details !== undefined && inv.details !== null
+          ? (JSON.parse(JSON.stringify(inv.details)) as unknown)
+          : null,
+      thumbnailImage:
+        typeof inv.thumbnailImage === 'string' && inv.thumbnailImage.trim()
+          ? inv.thumbnailImage.trim().slice(0, 2000)
+          : null,
       ...(subdomain ? { subdomain } : {}),
     };
   }
@@ -115,7 +113,8 @@ export class PaymentInvitationDetailsService {
     const code = randomBytes(16).toString('hex');
     const weddingDate = this.parseWeddingDateFromDraft(draft);
     const version = this.resolveVersionFromDraft(draft);
-    const album = this.extractAlbumFromDraft(draft);
+    const detailsJson = this.extractDetailsFromDraft(draft);
+    const thumbnailImage = this.extractThumbnailImageFromDraft(draft);
 
     let resolvedSubdomain = tryNormalizeInviteSubdomain(draft.subdomain);
     if (resolvedSubdomain) {
@@ -142,7 +141,8 @@ export class PaymentInvitationDetailsService {
       groomName: groomName.slice(0, 255),
       weddingDate,
       venue: typeof draft.venue === 'string' ? draft.venue.slice(0, 500) : null,
-      album,
+      details: detailsJson,
+      thumbnailImage,
     };
 
     let details = this.invitationDetailsRepository.create({
@@ -224,31 +224,22 @@ export class PaymentInvitationDetailsService {
       : 1;
   }
 
-  private extractAlbumFromDraft(
-    draft: Record<string, unknown>,
-  ): PaymentInvitationAlbumItem[] | null {
-    if (!Array.isArray(draft.album)) {
+  private extractDetailsFromDraft(draft: Record<string, unknown>): unknown | null {
+    if (!('details' in draft) || draft.details === undefined || draft.details === null) {
       return null;
     }
-    const items = draft.album
-      .map((item): PaymentInvitationAlbumItem | null => {
-        if (!item || typeof item !== 'object') {
-          return null;
-        }
-        const o = item as Record<string, unknown>;
-        const storageKey = typeof o.storageKey === 'string' ? o.storageKey : '';
-        if (!storageKey) {
-          return null;
-        }
-        return {
-          storageKey: storageKey.slice(0, 500),
-          caption: typeof o.caption === 'string' ? o.caption.slice(0, 500) : null,
-          ...(typeof o.sortOrder === 'number' && Number.isFinite(o.sortOrder)
-            ? { sortOrder: Math.max(0, Math.floor(o.sortOrder)) }
-            : {}),
-        };
-      })
-      .filter((x): x is PaymentInvitationAlbumItem => x !== null);
-    return items.length > 0 ? items : null;
+    try {
+      return JSON.parse(JSON.stringify(draft.details)) as unknown;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractThumbnailImageFromDraft(draft: Record<string, unknown>): string | null {
+    const v = draft.thumbnailImage;
+    if (typeof v !== 'string' || !v.trim()) {
+      return null;
+    }
+    return v.trim().slice(0, 2000);
   }
 }

@@ -89,13 +89,6 @@ export class PaymentEntity {
   updatedAt!: Date;
 }
 
-/** Một ảnh trong album thiệp (key lưu trữ, ví dụ S3). */
-export type PaymentInvitationAlbumItem = {
-  storageKey: string;
-  caption?: string | null;
-  sortOrder?: number;
-};
-
 @Entity({ name: 'payment_invitation_details' })
 export class PaymentInvitationDetailsEntity {
   @PrimaryGeneratedColumn()
@@ -133,7 +126,11 @@ export class PaymentInvitationDetailsEntity {
   venue?: string | null;
 
   @Column({ type: 'jsonb', nullable: true })
-  album?: PaymentInvitationAlbumItem[] | null;
+  details?: unknown | null;
+
+  /** Key S3 hoặc URL tuyệt đối ảnh đại diện thiệp. */
+  @Column({ type: 'varchar', length: 2000, nullable: true })
+  thumbnailImage?: string | null;
 
   @Column({ type: 'varchar', length: 255, nullable: true })
   guestBookSpreadsheetId?: string | null;

@@ -72,12 +72,6 @@ export type VnpayIpnResponseBody = {
 };
 
 /** Chi tiết thiệp công khai (theo `code`), dùng cho trang invite không cần đăng nhập. */
-export type PublicInvitationAlbumItemResponse = {
-  url: string | null;
-  caption: string | null;
-  sortOrder: number | null;
-};
-
 export type PublicInvitationDetailsByCodeResponse = {
   code: string;
   /** Subdomain công khai (nếu đã cấu hình). */
@@ -88,7 +82,9 @@ export type PublicInvitationDetailsByCodeResponse = {
   groomName: string;
   weddingDate: string | null;
   venue: string | null;
-  album: PublicInvitationAlbumItemResponse[];
+  details: unknown | null;
+  /** URL ảnh đại diện (đã resolve S3 nếu lưu key). */
+  thumbnailImage: string | null;
   createdAt: string;
   updatedAt: string;
 };

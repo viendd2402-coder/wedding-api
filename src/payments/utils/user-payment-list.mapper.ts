@@ -1,7 +1,4 @@
-import type {
-  PaymentInvitationAlbumItem,
-  PaymentInvitationDetailsEntity,
-} from '../entities/payment-invitation-details.entity';
+import type { PaymentInvitationDetailsEntity } from '../entities/payment-invitation-details.entity';
 import type { PaymentEntity } from '../entities/payment.entity';
 import type {
   InvitationPublicationStatus,
@@ -11,66 +8,29 @@ import type {
 import { invitationTemplateDisplayName } from '../invitation-templates.catalog';
 import { tryNormalizeInviteSubdomain } from './invite-subdomain.util';
 
-function parseVenueLines(venue: string | null | undefined): {
-  city: string | null;
-  venueName: string | null;
-  venueDetail: string | null;
-} {
-  if (venue == null) {
-    return { city: null, venueName: null, venueDetail: null };
-  }
-  const parts = venue
-    .split(/\r?\n/)
-    .map((p) => p.trim())
-    .filter((p) => p.length > 0);
-  if (parts.length >= 3) {
-    return { city: parts[0]!, venueName: parts[1]!, venueDetail: parts[2]! };
-  }
-  if (parts.length === 2) {
-    return { city: null, venueName: parts[0]!, venueDetail: parts[1]! };
-  }
-  if (parts.length === 1) {
-    return { city: null, venueName: parts[0]!, venueDetail: null };
-  }
-  return { city: null, venueName: null, venueDetail: null };
-}
-
-function pickFirstAlbumStorageKey(
-  album: PaymentInvitationAlbumItem[] | null | undefined,
+function resolveListThumbnailUrl(
+  raw: string | null | undefined,
+  resolvePublicObjectUrl: (key: string | null | undefined) => string | null,
 ): string | null {
-  if (!album?.length) {
+  const s = raw?.trim();
+  if (!s) {
     return null;
   }
-  const sorted = [...album].sort(
-    (a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0),
-  );
-  const key = sorted[0]?.storageKey?.trim();
-  return key?.length ? key : null;
+  if (/^https?:\/\//i.test(s)) {
+    return s;
+  }
+  return resolvePublicObjectUrl(s);
 }
 
-function parseDraftAlbum(raw: unknown): PaymentInvitationAlbumItem[] | null {
-  if (!Array.isArray(raw)) {
+function parseDraftDetails(raw: unknown): unknown | null {
+  if (raw === undefined || raw === null) {
     return null;
   }
-  const items: PaymentInvitationAlbumItem[] = [];
-  for (const item of raw) {
-    if (!item || typeof item !== 'object') {
-      continue;
-    }
-    const o = item as Record<string, unknown>;
-    const storageKey = typeof o.storageKey === 'string' ? o.storageKey.trim() : '';
-    if (!storageKey) {
-      continue;
-    }
-    items.push({
-      storageKey: storageKey.slice(0, 500),
-      caption: typeof o.caption === 'string' ? o.caption.slice(0, 500) : null,
-      ...(typeof o.sortOrder === 'number' && Number.isFinite(o.sortOrder)
-        ? { sortOrder: Math.max(0, Math.floor(o.sortOrder)) }
-        : {}),
-    });
+  try {
+    return JSON.parse(JSON.stringify(raw)) as unknown;
+  } catch {
+    return null;
   }
-  return items.length > 0 ? items : null;
 }
 
 function coerceToDate(value: unknown): Date | null {
@@ -97,7 +57,8 @@ type InvitationSnapshot = {
   groomName: string | null;
   weddingDate: Date | null;
   venueRaw: string | null;
-  album: PaymentInvitationAlbumItem[] | null;
+  details: unknown | null;
+  thumbnailImage: string | null;
   publicCode: string | null;
   publicSubdomain: string | null;
   rowUpdatedAt: Date;
@@ -114,7 +75,8 @@ function buildInvitationSnapshot(
       groomName: details.groomName?.trim() || null,
       weddingDate: coerceToDate(details.weddingDate),
       venueRaw: details.venue?.trim() || null,
-      album: details.album ?? null,
+      details: details.details ?? null,
+      thumbnailImage: details.thumbnailImage?.trim() || null,
       publicCode: details.code?.trim() || null,
       publicSubdomain: details.subdomain?.trim() || null,
       rowUpdatedAt: coerceToDate(details.updatedAt) ?? payment.updatedAt,
@@ -136,6 +98,10 @@ function buildInvitationSnapshot(
       : null;
   const venueRaw =
     typeof d.venue === 'string' && d.venue.trim() ? d.venue.trim() : null;
+  const thumbnailImage =
+    typeof d.thumbnailImage === 'string' && d.thumbnailImage.trim()
+      ? d.thumbnailImage.trim()
+      : null;
 
   return {
     templateSlug,
@@ -143,7 +109,8 @@ function buildInvitationSnapshot(
     groomName,
     weddingDate: coerceToDate(d.weddingDate),
     venueRaw,
-    album: parseDraftAlbum(d.album),
+    details: parseDraftDetails(d.details),
+    thumbnailImage,
     publicCode: null,
     publicSubdomain: tryNormalizeInviteSubdomain(d.subdomain),
     rowUpdatedAt: payment.updatedAt,
@@ -201,8 +168,10 @@ export function mapPaymentToUserListItem(
   const slugForName =
     inv?.templateSlug?.trim() || payment.planSlug?.trim() || null;
   const templateName = invitationTemplateDisplayName(slugForName);
-  const thumbKey = pickFirstAlbumStorageKey(inv?.album ?? null);
-  const thumbnailUrl = resolvePublicObjectUrl(thumbKey);
+  const thumbnailUrl = resolveListThumbnailUrl(
+    inv?.thumbnailImage ?? null,
+    resolvePublicObjectUrl,
+  );
 
   const publicationStatus: InvitationPublicationStatus = details?.code?.trim()
     ? 'published'
