@@ -3,6 +3,7 @@ import { BullModule } from '@nestjs/bullmq';
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuthModule } from '../auth/auth.module';
+import { CloudflareDnsModule } from '../cloudflare-dns/cloudflare-dns.module';
 import { UserEntity } from '../auth/entities/user.entity';
 import { GoogleSheetsModule } from '../google-sheets/google-sheets.module';
 import { MailModule } from '../mail/mail.module';
@@ -44,6 +45,7 @@ import { PaymentInvitationDetailsService } from './services/payment-invitation-d
     PayosModule,
     VnpayModule,
     AuthModule,
+    CloudflareDnsModule,
   ],
   controllers: [
     PaymentInvitationPublicController,

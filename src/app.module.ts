@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppController } from './app.controller';
 import { AuthModule } from './auth/auth.module';
+import { CloudflareDnsModule } from './cloudflare-dns/cloudflare-dns.module';
 import { validateEnv } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { PaymentsModule } from './payments/payments.module';
@@ -40,6 +41,7 @@ import { ReportModule } from './report/report.module';
       }),
     }),
     AuthModule,
+    CloudflareDnsModule,
     HealthModule,
     PaymentsModule,
     ReportModule,

@@ -11,6 +11,7 @@ import {
 } from '../../google-sheets/guest-book-sheet.constants';
 import { GoogleSheetsService } from '../../google-sheets/google-sheets.service';
 import { buildInviteSubdomainPublicUrl } from '../utils/invite-subdomain.util';
+import { CloudflareDnsService } from '../../cloudflare-dns/cloudflare-dns.service';
 import { MailService } from '../../mail/mail.service';
 import { PaymentInvitationDetailsEntity } from '../entities/payment-invitation-details.entity';
 import {
@@ -31,6 +32,7 @@ export class PostPaymentProcessor extends WorkerHost {
     private readonly configService: ConfigService,
     private readonly googleSheetsService: GoogleSheetsService,
     private readonly mailService: MailService,
+    private readonly cloudflareDnsService: CloudflareDnsService,
   ) {
     super();
   }
@@ -100,6 +102,8 @@ export class PostPaymentProcessor extends WorkerHost {
       GUEST_BOOK_WISHES_TAB_TITLE,
     );
 
+    await this.provisionInviteSubdomainDns(details);
+
     await this.mailService.enqueuePostPaymentThankYouEmail({
       to: userEmail,
       invitationCode: details.code,
@@ -153,9 +157,60 @@ export class PostPaymentProcessor extends WorkerHost {
       .replace(/\/$/, '');
   }
 
+  private async provisionInviteSubdomainDns(
+    details: PaymentInvitationDetailsEntity,
+  ): Promise<void> {
+    const sub = details.subdomain?.trim();
+    const root =
+      this.configService.get<string>('INVITE_ROOT_DOMAIN', '')?.trim() ?? '';
+    const target =
+      this.configService.get<string>('INVITE_DNS_RECORD_CONTENT', '')?.trim() ??
+      '';
+
+    if (!sub || !root || !target) {
+      this.logger.log(
+        `Skip Cloudflare DNS provisioning (subdomain, INVITE_ROOT_DOMAIN, or INVITE_DNS_RECORD_CONTENT missing) invitationDetailsId=${details.id}`,
+      );
+      return;
+    }
+
+    if (!this.cloudflareDnsService.isConfigured()) {
+      this.logger.log(
+        `Skip Cloudflare DNS provisioning (CLOUDFLARE_API_TOKEN / CLOUDFLARE_ZONE_ID missing) invitationDetailsId=${details.id}`,
+      );
+      return;
+    }
+
+    const recordType = this.configService.get<
+      'A' | 'CNAME'
+    >('INVITE_DNS_RECORD_TYPE', 'A');
+    const proxied = this.configService.get<boolean>(
+      'INVITE_DNS_PROXIED',
+      true,
+    );
+
+    try {
+      const outcome = await this.cloudflareDnsService.ensureSubdomainDnsRecord({
+        subdomainLabel: sub,
+        rootDomain: root,
+        type: recordType === 'CNAME' ? 'CNAME' : 'A',
+        content: target,
+        proxied,
+      });
+      this.logger.log(
+        `Cloudflare DNS invitationDetailsId=${details.id} outcome=${outcome}`,
+      );
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      this.logger.error(
+        `Cloudflare DNS failed (continuing provisioning) invitationDetailsId=${details.id}: ${message}`,
+      );
+    }
+  }
+
   private buildPublicInvitationUrl(details: PaymentInvitationDetailsEntity): string {
     const root = this.configService
-      .get<string>('INVITE_SUBDOMAIN_ROOT_DOMAIN', '')
+      .get<string>('INVITE_ROOT_DOMAIN', '')
       ?.trim();
     const sub = details.subdomain?.trim();
     const fromSub = buildInviteSubdomainPublicUrl(sub, root ?? '', 'https');

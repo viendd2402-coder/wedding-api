@@ -38,6 +38,16 @@ type AppEnv = {
   GOOGLE_SHEETS_APPS_SCRIPT_SECRET: string;
   /** Apex domain cho URL thiệp dạng `https://{sub}.{root}/`, ví dụ `lumierewedding.vn`. Tùy chọn. */
   INVITE_ROOT_DOMAIN: string;
+  /** API token Cloudflare (Zone → DNS → Edit). Tùy chọn nếu không dùng module DNS. */
+  CLOUDFLARE_API_TOKEN: string;
+  /** Zone ID của domain trên Cloudflare. Tùy chọn. */
+  CLOUDFLARE_ZONE_ID: string;
+  /** Loại bản ghi tự tạo cho subdomain thiệp sau thanh toán: A | CNAME. Mặc định A. */
+  INVITE_DNS_RECORD_TYPE: 'A' | 'CNAME';
+  /** Giá trị bản ghi (IPv4 hoặc hostname CNAME). Rỗng = không tự tạo DNS trong queue. */
+  INVITE_DNS_RECORD_CONTENT: string;
+  /** Cloudflare proxy (orange cloud) cho bản ghi thiệp. Mặc định true. */
+  INVITE_DNS_PROXIED: boolean;
 };
 
 export function validateEnv(config: Record<string, unknown>): AppEnv {
@@ -290,6 +300,38 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
       ? inviteRootDomainInput.trim().toLowerCase()
       : '';
 
+  const cloudflareApiTokenInput = config.CLOUDFLARE_API_TOKEN;
+  const cloudflareApiToken =
+    typeof cloudflareApiTokenInput === 'string'
+      ? cloudflareApiTokenInput.trim()
+      : '';
+
+  const cloudflareZoneIdInput = config.CLOUDFLARE_ZONE_ID;
+  const cloudflareZoneId =
+    typeof cloudflareZoneIdInput === 'string'
+      ? cloudflareZoneIdInput.trim()
+      : '';
+
+  const inviteDnsRecordTypeInput = config.INVITE_DNS_RECORD_TYPE;
+  const inviteDnsRecordTypeRaw =
+    typeof inviteDnsRecordTypeInput === 'string'
+      ? inviteDnsRecordTypeInput.trim().toLowerCase()
+      : '';
+  const inviteDnsRecordType: AppEnv['INVITE_DNS_RECORD_TYPE'] =
+    inviteDnsRecordTypeRaw === 'cname' ? 'CNAME' : 'A';
+
+  const inviteDnsRecordContentInput = config.INVITE_DNS_RECORD_CONTENT;
+  const inviteDnsRecordContent =
+    typeof inviteDnsRecordContentInput === 'string'
+      ? inviteDnsRecordContentInput.trim()
+      : '';
+
+  const inviteDnsProxiedInput = config.INVITE_DNS_PROXIED;
+  const inviteDnsProxied =
+    typeof inviteDnsProxiedInput === 'string'
+      ? inviteDnsProxiedInput.toLowerCase() === 'true'
+      : Boolean(inviteDnsProxiedInput ?? true);
+
   return {
     NODE_ENV: nodeEnvValue as AppEnv['NODE_ENV'],
     PORT: port,
@@ -329,5 +371,10 @@ export function validateEnv(config: Record<string, unknown>): AppEnv {
     GOOGLE_SHEETS_APPS_SCRIPT_URL: googleSheetsAppsScriptUrl,
     GOOGLE_SHEETS_APPS_SCRIPT_SECRET: googleSheetsAppsScriptSecret,
     INVITE_ROOT_DOMAIN: inviteRootDomain,
+    CLOUDFLARE_API_TOKEN: cloudflareApiToken,
+    CLOUDFLARE_ZONE_ID: cloudflareZoneId,
+    INVITE_DNS_RECORD_TYPE: inviteDnsRecordType,
+    INVITE_DNS_RECORD_CONTENT: inviteDnsRecordContent,
+    INVITE_DNS_PROXIED: inviteDnsProxied,
   };
 }
